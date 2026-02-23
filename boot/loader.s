@@ -161,7 +161,7 @@ p_mode_start:
 ;   ecx : length of message
 ;-------------------------
 print_log:
-; Get current cursor, bx=current cursor
+; 1. Get current cursor, bx=current cursor
 ; get high bits of cursor
     mov dx, 0x03d4
     mov al, 0x0e
@@ -178,16 +178,18 @@ print_log:
     in al, dx
     mov bl, al
 
-; Set bx to next line
+; 2. Set bx to next line
 ; dividend: dx:ax, quotient: ax, remainder: dx
     xor dx, dx      ; clear to zero
     mov ax, bx
     mov si, 80
     div si          ; ax: quotient/row, dx: remainder/column
-    sub bx, dx      ; minus remainder
-    add bx, 80      ; add the width of the entire column
+    sub bx, dx      ; minus remainder(80 characters per line)
+    add bx, 80      ; move to the beginning of next line
 
-; Print log
+    push bx         ; save next line position to stack (will be modified in loop)
+
+; 3. Print log
     mov ax, SELECTOR_VIDEO
     mov gs, ax
     shl bx, 1       ; 1 char = 2 byte, 
@@ -201,8 +203,9 @@ putchar_loop:
     add bx, 2                   ; screen write pointer
     loop putchar_loop           ; ecx is initialize at the beginning
 
-; Set cursor
-    shr bx, 1       ; 2 bytes = 1 character
+; 4. Set cursor to next line
+    pop bx                      ; restore current line position from stack
+    add bx, 80                  ;  move to the beginning of next line
 ; set high bits of cursor
     mov dx, 0x03d4
     mov al, 0x0e

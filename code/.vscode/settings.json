@@ -1,0 +1,21 @@
+{
+    "files.associations": {
+        "*.s": "asm",
+        "*.inc": "asm",
+        "*.c": "c",
+        "*.h": "c"
+    },
+    "[asm]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.formatOnSave": false // ASM 沒有 formatter，無法自動排版
+    },
+    "[c]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    }
+}

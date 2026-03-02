@@ -151,9 +151,82 @@ p_mode_start:
     call print_log
 
 ;-------------------------
+; Enable memory paging
+;-------------------------
+    call setup_page
+
+; 2. Set page directory address
+    mov eax, PAGE_DIR_ADDR      ; 0x0010_0000
+    mov cr3, eax
+
+; 3. Enable memory paginh
+    mov eax, cr0
+    or eax, 0x8000_0000 ; [31:31] for enabling memory paging(register CR0 PG set to zero)
+    mov cr0, eax 
+
+;-------------------------
 ; Pause the process
 ;-------------------------
     jmp $               ; stop here
+
+;-------------------------
+; setup memory paging
+;-------------------------
+setup_page:
+; Clear page directory
+    mov eax, 0x0
+    mov ebx, PAGE_DIR_ADDR              ; 0x0010_0000
+    mov esi, 0                          ; index of entry
+    mov ecx, 1024                       ; loop count(total 1024 * 4B = 4KB)
+clear_page_dir_loop:
+    mov [ebx + esi * 4], eax
+    inc esi
+    loop clear_page_dir_loop
+
+; Create page directory entry(PDE)
+; enrty 0 and 768 point to page table 0
+    mov eax, PAGE_TABLE_ADDR            ; page table 0 in 0x0010_1000
+    or eax, PG_US_S | PG_RW_W | PG_P    ; only supervisor | read and write | in memory
+    mov esi, 0                          ; index of entry
+    mov [ebx + esi * 4], eax            ; for 1 MB kernel
+    mov esi, 768                        ; index of entry
+    mov [ebx + esi * 4], eax            ; mapping the same 1 MB kernel
+
+; Reserve the kernel space, page table 769 - 1022
+    add eax, 0x1000                     ; 0x0010_2000
+    mov esi, 769                        ; index of entry
+    mov ecx, 254                        ; loop count 1022 - 769 + 1
+create_pde_loop:
+    mov [ebx + esi * 4], eax
+    inc esi
+    add eax, 0x1000                     ; 4KB
+    loop create_pde_loop
+
+; Last entry of PDE always point to itself
+    mov eax, PAGE_DIR_ADDR              ; 0x0010_0000
+    or eax, PG_US_S | PG_RW_W | PG_P    ; only supervisor | read and write | in memory
+    mov esi, 1023                       ; index of entry
+    mov [ebx + esi * 4], eax            ; point to itself(0x0000_1000)
+
+; Create page table entry (PTE) for page table 0
+    mov eax, 0x0                        ; for physical address
+    or eax, PG_US_S | PG_RW_W | PG_P
+    mov ebx, PAGE_TABLE_ADDR            ; 0x0010_1000
+    mov esi, 0                          ; index of page table
+    mov ecx, 256                        ; 4K * 256 = 1 MB
+create_pte_loop:
+    mov [ebx + esi * 4], eax
+    add eax, 0x1000
+    inc esi
+    loop create_pte_loop
+
+    ret
+
+
+
+
+
+
 
 ;-------------------------
 ; print log

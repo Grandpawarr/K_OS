@@ -165,9 +165,52 @@ p_mode_start:
     mov cr0, eax 
 
 ;-------------------------
+; update GDT for video
+;-------------------------
+    sgdt [gdtr]             ; store to Ram
+    mov eax, 0xc000_0000
+    mov ebx, video_desc     
+    or [ebx + 4], eax
+    or [gdtr + 2], eax      ; update the gdt_base
+    lgdt [gdtr]             ; load to register
+
+;-------------------------
+; print log
+;-------------------------
+    mov edi, msg_3
+    mov ecx, msg_3_len
+    call print_log
+
+;-------------------------
+; load kernel
+;-------------------------
+    mov eax, KERNEL_START_SECTOR
+    mov ebx, KERNEL_BASE_ADDR
+    mov cl, KERNEL_SECTOR_COUNT
+    call read_hd_32
+
+;-------------------------
+; parsing kernel ELF
+;-------------------------
+    call kernel_decode_elf
+    mov esp, KERNEL_STACK_TOP
+
+;-------------------------
+; print log
+;-------------------------
+    mov edi, msg_4
+    mov ecx, msg_4_len
+    call print_log
+
+;-------------------------
+; jump to kernel
+;-------------------------
+    jmp KERNEL_START_ADDR
+
+;-------------------------
 ; Pause the process
 ;-------------------------
-    jmp $               ; stop here
+    jmp $               ; only for debugging
 
 ;-------------------------
 ; setup memory paging
@@ -222,12 +265,6 @@ create_pte_loop:
 
     ret
 
-
-
-
-
-
-
 ;-------------------------
 ; print log
 ;   edi : address of message
@@ -276,9 +313,9 @@ putchar_loop:
     add bx, 2                   ; screen write pointer
     loop putchar_loop           ; ecx is initialize at the beginning
 
-; 4. Set cursor to next line
+; 4. Set cursor after printed text
     pop bx                      ; restore current line position from stack
-    add bx, 80                  ;  move to the beginning of next line
+    add bx, dx                  ; dx = chars printed, move cursor to
 ; set high bits of cursor
     mov dx, 0x03d4
     mov al, 0x0e
@@ -298,11 +335,143 @@ putchar_loop:
     ret
 
 ;-------------------------
+; Read hard disk
+;   eax : LBA, logic base address
+;   ebx : RAM address
+;   ecx  : sector count
+;-------------------------
+read_hd_32:
+
+; step 1 : set sector count
+    mov esi, eax    ; backup eax
+                    ; cause port operation only accept al/ax
+    mov dx, 0x1f2   
+    mov al, cl
+    out dx, al
+    mov eax, esi    ; restore eax
+
+; step 2 : set LBA from ATA port 0x1f3 to 0x1f6
+    ; LBA[7:0]
+    mov dx, 0x1f3
+    out dx, al
+
+    ; LBA[15:8]
+    shr eax, 8          ; EAX lowest 8 bits is AL
+    mov dx, 0x1f4
+    out dx, al
+
+    ; LBA[23:16]
+    shr eax, 8  
+    mov dx, 0x1f5
+    out dx, al
+
+    ; LBA[27:24] and setting (LBA only 28 bits)
+    shr eax, 8
+    and al, 0x0f    ; mask: only keep the lower 4 bits, 
+                    ;       clear the higher 4 bits
+    or al, 0xe0     ; b'1110 for master drive / LBA addressing
+    mov dx, 0x1f6
+    out dx, al
+
+; step 3 : start read command
+    mov dx, 0x1f7   ; ATA(command register)
+    mov al, 0x20    ; ATA(read sectors with retry)
+    out dx, al
+
+; step 4 : polling status
+    polling:
+        nop             ; hardware delay
+        in al, dx
+        and al, 0x88    ; status register: [3]DRQ/[7]:BSY
+        cmp al, 0x08    ; Data is ready and not busy
+                        ; result store in EFLAGS(zf bit)
+        jnz polling     ; keep polling
+
+; step 5 : read data from hard disk
+    mov al, cl
+    mov dx, 256     ; sector count * 512 / 2 
+                    ; (2 byte for each read)
+    mul dx          ; ax = ax * dx (only support ax)
+    mov cx, ax      ; cx = total loop time
+    mov dx, 0x1f0
+    read:
+        in ax, dx
+        mov [ebx], ax
+        add ebx, 2
+        loop read
+
+        
+    ret
+
+;-------------------------
+; kernel decode ELF
+;-------------------------
+kernel_decode_elf:
+    xor eax, eax
+    xor ebx, ebx                    ; current program header
+    xor ecx, ecx                    ; number of program header  
+    xor edx, edx                    ; size of program header
+
+; load each program header
+    mov ebx, KERNEL_BASE_ADDR
+    mov eax, KERNEL_BASE_ADDR + E_PHOFF
+    add ebx, [eax]                  ; start of program header
+    mov eax, KERNEL_BASE_ADDR + E_PHNUM
+    mov cx, [eax]                   ; number of program header
+    mov eax, KERNEL_BASE_ADDR + E_PHENTSIZE
+    mov dx, [eax]                   ; size of program header
+each_program_header_loop:
+    mov eax, ebx + P_TYPE            ; type of program header
+    cmp byte [eax], PT_LOAD         ; only load PT_LOAD
+    jne next_program_header 
+
+    ; memory copy
+    push dword [ebx + P_FILESZ]     ;size
+    mov eax, [ebx + P_OFFSET]
+    add eax, KERNEL_BASE_ADDR
+    push eax
+    push dword [ebx + P_VADDR]    ; destination
+    call mem_cpy
+    add esp, 12                     ; clear argument in stack
+
+next_program_header:
+    add ebx, edx
+    loop each_program_header_loop
+
+    ret
+
+;-------------------------
+; memory copy(dstr, src, size)
+;   push size   : size of data
+;   push src    : address of source
+;   push dst    : address of destination
+;-------------------------
+mem_cpy:
+    ; backup
+    push ecx
+
+    ; copy by byte
+    mov edi, [esp + 8]
+    mov esi, [esp + 12]
+    mov ecx, [esp + 16]
+    cld         ; set increment for movsb
+    rep movsb
+
+    ; restore
+    pop ecx
+
+    ret
+
+;-------------------------
 ; non-fix data location
 ;-------------------------
     msg_1       db "2 Loader"
     msg_1_len   equ 8
     msg_2       db "3 Protected"
     msg_2_len   equ 11
+    msg_3       db "4 Paging"
+    msg_3_len   equ 8
+    msg_4       db "5 Kernel"
+    msg_4_len   equ 8
     gdtr    dw GDT_LIMIT    ; [15:00] GDT limit 16 bits
             dd gdt_base     ; [47:16] GDT base address 32 bits

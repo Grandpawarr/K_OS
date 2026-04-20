@@ -56,6 +56,7 @@ section mbr vstart=0x7c00
 ;   cl  : sector count
 ;-------------------------
 read_hd:
+
 ; step 1 : set sector count
     mov esi, eax    ; backup eax
                     ; cause port operation only accept al/ax

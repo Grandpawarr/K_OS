@@ -1,4 +1,5 @@
 #include "print.h"
+#include "string.h"
 
 //=========================
 // print.h

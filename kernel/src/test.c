@@ -187,7 +187,7 @@ void test_string()
     // test strchrs()
     put_str("\n   test strchrs\n");
     int n = strchrs(str1, 'n');
-    put_str("count of 'n':");
+    put_str("count of 'n':"); // 6
     put_int(n);
     put_str("\n");
     //*/

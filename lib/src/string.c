@@ -162,10 +162,10 @@ char* strrchr(const char* str, const uint8_t ch)
  */
 char* strcat(char* dst, const char* src)
 {
-    char* p_dst = dst;
-    while (*p_dst++);
-    --p_dst;
-    while((*p_dst++ = *src++));
+    char* pDst = dst;
+    while (*pDst++);
+    --pDst;
+    while((*pDst++ = *src++));
     return dst;
 }
 
@@ -179,15 +179,15 @@ char* strcat(char* dst, const char* src)
  */
 uint32_t strchrs(const char* str, uint8_t ch)
 {
-    uint32_t ch_cnt = 0;
+    uint32_t chCnt = 0;
     const char* p = str;
     while(*p != 0)
     {
         if (*p == ch)
         {
-            ch_cnt++;
+            chCnt++;
         }
         p++;
     }
-    return ch_cnt;
+    return chCnt;
 }

@@ -5,3 +5,6 @@ ch04 kernel
 - makefile: easy to compile all function
 - Print log  by print.s
 - String function library
+
+ch05 Memory Management
+- bit map implement 

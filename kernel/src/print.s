@@ -83,14 +83,14 @@ put_char:
     add bx, 80              ; next line
 
 ; check roll screen
-    cmp bx, 2000
+    cmp bx, 2000            ; screen size is 2000 (80 * 25)
     jl .set_cursor
 
 .roll_screen:               ; bx unit is bytes
     mov ecx, 3840           ; 2000-80=1920 chars, 1920*2=3840 bytes
     mov esi, 0xc00b80a0     ; row 1
     mov edi, 0xc00b8000     ; row 0
-    cld                     ; set increment
+    cld                     ; clear DF flag.
     rep movsb
 
     mov bx, 3840            ; the last line

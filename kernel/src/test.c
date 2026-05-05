@@ -1,5 +1,6 @@
 #include "print.h"
 #include "string.h"
+#include "bitmap.h"
 
 //=========================
 // print.h
@@ -7,7 +8,7 @@
 void test_put_char()
 {
     int i ;
-    int row = 8;
+    int row = 10;
     
     /* Test character */
     put_char('C');
@@ -194,15 +195,113 @@ void test_string()
 }
 
 //=========================
+// bitmap.h
+//=========================
+void test_bitmap()
+{
+    uint8_t test[4] ={0x1, 0x2, 0x3, 0x4};
+    struct bitmap btmp;
+
+    // test bitmap_init()
+    put_str("test bitmap_init\n");
+    bitmap_init(&btmp, test, 4);
+    put_str("bitmap: ");    // 1234
+    put_int(test[0]);  
+    put_int(test[1]); 
+    put_int(test[2]); 
+    put_int(test[3]);  
+    put_char('\n');
+
+    // test bitmap_reset()
+    put_str("test bitmap_reset\n");
+    bitmap_reset(&btmp);
+    put_str("bitmap: ");    // 0000
+    put_int(test[0]);   
+    put_int(test[1]);  
+    put_int(test[2]);
+    put_int(test[3]);
+    put_char('\n');
+
+    // test bitmap_set()
+    put_str("test bitmap_set\n");
+    bitmap_set(&btmp, 12, true);
+    put_str("bitmap[0]: ");     // 00
+    put_int(test[0]);
+    put_str("\nbitmap[1]: ");   // 10
+    put_int(test[1]);
+    put_str("\nbitmap[2]: ");   // 00
+    put_int(test[2]);
+    put_str("\nbitmap[3]: ");   // 00
+    put_int(test[3]);
+    put_char('\n');
+
+    // test bitmap_check()
+    put_str("test bitmap_check\n");
+    int value = bitmap_check(&btmp, 11);
+    put_str("bitmap[11]= ");    // 0
+    put_int(value);
+    put_char('\n');
+
+    value = bitmap_check(&btmp, 12);
+    put_str("bitmap[12]= ");    // 1
+    put_int(value);
+    put_char('\n');
+
+    // test bitmap_aquire()
+    put_str("test bitmap_acquire\n");
+    put_str("acquire 1, ");
+    int idx = bitmap_acquire(&btmp, 1);
+    put_str("free_idx: ");      // 0
+    put_int(idx);
+    put_char('\n');
+
+    put_str("acquire 11, ");
+    idx = bitmap_acquire(&btmp, 11);
+    put_str("free_idx: ");      // 1
+    put_int(idx);
+    put_char('\n');
+
+    put_str("acquire 19, ");
+    idx = bitmap_acquire(&btmp, 19);
+    put_str("free_idx: ");      // D(13)
+    put_int(idx);
+    put_char('\n');
+
+    put_str("acquire 12, ");
+    idx = bitmap_acquire(&btmp, 12); 
+    put_str("free_idx: ");      // FFFFFFFF(-1)
+    put_int(idx);
+    put_char('\n');
+
+    put_str("test bitmap_release\n");
+    bitmap_release(&btmp, 16, 4);
+
+    put_str("bitmap[0]: ");     // FF
+    put_int(test[0]);
+    put_str("\nbitmap[1]: ");   // FF
+    put_int(test[1]);
+    put_str("\nbitmap[2]: ");   // F0
+    put_int(test[2]);
+    put_str("\nbitmap[3]: ");   // FF
+    put_int(test[3]);
+    put_char('\n');
+}
+
+//=========================
 // test_all
 //=========================
 void test_all()
 {
-    // print.h
-    //test_put_char();
-    //test_put_str();
-    //test_put_int();
-    //test_set_cursor();
+    /* print.h */
+    // test_put_char();
+    // test_put_str();
+    // test_put_int();
+    // test_set_cursor();
     // test_cls_screen();
-    test_string();
+
+    /* string.h */
+    // test_string();
+
+    /* bitmap.h */
+    test_bitmap();
 }

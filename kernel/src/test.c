@@ -1,15 +1,17 @@
 #include "print.h"
 #include "string.h"
 #include "bitmap.h"
+#include "list.h"
+#include "stddef.h"
 
 //=========================
 // print.h
 //=========================
 void test_put_char()
 {
-    int i ;
+    int i;
     int row = 10;
-    
+
     /* Test character */
     put_char('C');
 
@@ -26,15 +28,18 @@ void test_put_char()
 
     /* Test roll screen */
     put_char('\n');
-    for(int i = 0; i < 80 * row;i++)
+    for (int i = 0; i < 80 * row; i++)
     {
-        if(i%80 == 0)
+        if (i % 80 == 0)
         {
             put_char('H');
-        }else if(i % 80 == 79)
+        }
+        else if (i % 80 == 79)
         {
             put_char('E');
-        }else{
+        }
+        else
+        {
             put_char('*');
         }
     }
@@ -63,7 +68,7 @@ void test_put_int()
 
 void test_set_cursor()
 {
-    set_cursor(80*25);
+    set_cursor(80 * 25);
 }
 
 void test_cls_screen()
@@ -71,24 +76,23 @@ void test_cls_screen()
     cls_screen();
 }
 
-
 //=========================
 // string.h
 //=========================
 void test_string()
 {
     put_str("test string\n");
-    char src[10]={'\0'};
-    char dst[10]={'\0'};
+    char src[10] = {'\0'};
+    char dst[10] = {'\0'};
 
     // test memset()
     put_str("\n   test memset\n");
     int i;
-    for(i=0; i<9; i++)
+    for (i = 0; i < 9; i++)
     {
-        memset(src+i, '0'+i+1, 1);
+        memset(src + i, '0' + i + 1, 1);
     }
-    memset(src+9, '\0', 1);
+    memset(src + 9, '\0', 1);
     put_str("src:");
     put_str(src);
     put_str("\n");
@@ -108,11 +112,13 @@ void test_string()
 
     // test memcmp()
     put_str("\n   test memcmp\n");
-    src[5]='0';
-    if(0==memcmp(src, dst, 10))
+    src[5] = '0';
+    if (0 == memcmp(src, dst, 10))
     {
         put_str("The same\n");
-    }else{
+    }
+    else
+    {
         put_str("Different\n");
     }
     put_str("src:");
@@ -146,11 +152,13 @@ void test_string()
     //*
     // test strcmp()
     put_str("\n   test strcmp\n");
-    src[5]='6';
-    if(0==strcmp(src, dst))
+    src[5] = '6';
+    if (0 == strcmp(src, dst))
     {
         put_str("The same\n");
-    }else{
+    }
+    else
+    {
         put_str("Different\n");
     }
     put_str("src:");
@@ -162,8 +170,8 @@ void test_string()
 
     // test strchr()
     put_str("\n   test strchr\n");
-    char* str = "no pain no gain";
-    char* first = strchr(str, 'a');
+    char *str = "no pain no gain";
+    char *first = strchr(str, 'a');
     put_str(str);
     put_str("\n");
     put_str("first 'a' is at:");
@@ -172,7 +180,7 @@ void test_string()
 
     // test strrchr()
     put_str("\n   test strrchr\n");
-    char* last = strrchr(str, 'a');
+    char *last = strrchr(str, 'a');
     put_str("last 'a' is at:");
     put_int(last - str);
     put_str("\n");
@@ -180,7 +188,7 @@ void test_string()
     // test strcat()
     put_str("\n   test strcat\n");
     char str1[50] = "no pain no gain, \0";
-    char* str2 = "no sweat no sweet";
+    char *str2 = "no sweat no sweet";
     strcat(str1, str2);
     put_str(str1);
     put_str("\n");
@@ -199,25 +207,25 @@ void test_string()
 //=========================
 void test_bitmap()
 {
-    uint8_t test[4] ={0x1, 0x2, 0x3, 0x4};
+    uint8_t test[4] = {0x1, 0x2, 0x3, 0x4};
     struct bitmap btmp;
 
     // test bitmap_init()
     put_str("test bitmap_init\n");
     bitmap_init(&btmp, test, 4);
-    put_str("bitmap: ");    // 1234
-    put_int(test[0]);  
-    put_int(test[1]); 
-    put_int(test[2]); 
-    put_int(test[3]);  
+    put_str("bitmap: "); // 1234
+    put_int(test[0]);
+    put_int(test[1]);
+    put_int(test[2]);
+    put_int(test[3]);
     put_char('\n');
 
     // test bitmap_reset()
     put_str("test bitmap_reset\n");
     bitmap_reset(&btmp);
-    put_str("bitmap: ");    // 0000
-    put_int(test[0]);   
-    put_int(test[1]);  
+    put_str("bitmap: "); // 0000
+    put_int(test[0]);
+    put_int(test[1]);
     put_int(test[2]);
     put_int(test[3]);
     put_char('\n');
@@ -225,25 +233,25 @@ void test_bitmap()
     // test bitmap_set()
     put_str("test bitmap_set\n");
     bitmap_set(&btmp, 12, true);
-    put_str("bitmap[0]: ");     // 00
+    put_str("bitmap[0]: "); // 00
     put_int(test[0]);
-    put_str("\nbitmap[1]: ");   // 10
+    put_str("\nbitmap[1]: "); // 10
     put_int(test[1]);
-    put_str("\nbitmap[2]: ");   // 00
+    put_str("\nbitmap[2]: "); // 00
     put_int(test[2]);
-    put_str("\nbitmap[3]: ");   // 00
+    put_str("\nbitmap[3]: "); // 00
     put_int(test[3]);
     put_char('\n');
 
     // test bitmap_check()
     put_str("test bitmap_check\n");
     int value = bitmap_check(&btmp, 11);
-    put_str("bitmap[11]= ");    // 0
+    put_str("bitmap[11]= "); // 0
     put_int(value);
     put_char('\n');
 
     value = bitmap_check(&btmp, 12);
-    put_str("bitmap[12]= ");    // 1
+    put_str("bitmap[12]= "); // 1
     put_int(value);
     put_char('\n');
 
@@ -251,40 +259,162 @@ void test_bitmap()
     put_str("test bitmap_acquire\n");
     put_str("acquire 1, ");
     int idx = bitmap_acquire(&btmp, 1);
-    put_str("free_idx: ");      // 0
+    put_str("free_idx: "); // 0
     put_int(idx);
     put_char('\n');
 
     put_str("acquire 11, ");
     idx = bitmap_acquire(&btmp, 11);
-    put_str("free_idx: ");      // 1
+    put_str("free_idx: "); // 1
     put_int(idx);
     put_char('\n');
 
     put_str("acquire 19, ");
     idx = bitmap_acquire(&btmp, 19);
-    put_str("free_idx: ");      // D(13)
+    put_str("free_idx: "); // D(13)
     put_int(idx);
     put_char('\n');
 
     put_str("acquire 12, ");
-    idx = bitmap_acquire(&btmp, 12); 
-    put_str("free_idx: ");      // FFFFFFFF(-1)
+    idx = bitmap_acquire(&btmp, 12);
+    put_str("free_idx: "); // FFFFFFFF(-1)
     put_int(idx);
     put_char('\n');
 
     put_str("test bitmap_release\n");
     bitmap_release(&btmp, 16, 4);
 
-    put_str("bitmap[0]: ");     // FF
+    put_str("bitmap[0]: "); // FF
     put_int(test[0]);
-    put_str("\nbitmap[1]: ");   // FF
+    put_str("\nbitmap[1]: "); // FF
     put_int(test[1]);
-    put_str("\nbitmap[2]: ");   // F0
+    put_str("\nbitmap[2]: "); // F0
     put_int(test[2]);
-    put_str("\nbitmap[3]: ");   // FF
+    put_str("\nbitmap[3]: "); // FF
     put_int(test[3]);
     put_char('\n');
+}
+
+//=========================
+// list.h
+//=========================
+struct test_item
+{
+    int id;
+    struct list_elem tag;
+};
+
+static bool check_id(struct list_elem *elem, int arg)
+{
+    struct test_item *bbb = elem2entry(struct test_item, tag, elem);
+    if (bbb->id == arg)
+    {
+        return true;
+    }
+    return false;
+}
+
+void test_list()
+{
+    struct list all_tag;
+    struct test_item node1, node2, node3, node4, node5;
+    struct list_elem *get_tag;
+    struct test_item *get_item;
+
+    node1.id = 0x111;
+    node2.id = 0x222;
+    node3.id = 0x333;
+    node4.id = 0x444;
+    node5.id = 0x555;
+
+    put_str("test list_init\n");
+    list_init(&all_tag);
+
+    //*
+    put_str("test list_insert\n");
+    list_insert(&all_tag.tail, &node1.tag);
+    //*/
+
+    /*
+    put_str("test list_remove\n");
+    list_remove(&node1.tag);
+    //*/
+
+    /*
+    put_str("test list_append\n");
+    list_append(&all_tag, &node2.tag);
+    //*/
+
+    /*
+    put_str("test list_push\n");
+    list_push(&all_tag, &node3.tag);
+    list_push(&all_tag, &node4.tag);
+    //*/
+
+    /*
+    put_str("test list_pop\n");
+    get_tag = list_pop(&all_tag);
+    put_str("pop tag: ");
+    if (NULL == get_tag) {
+        put_str("NULL");
+    } else {
+        get_item = elem2entry(struct test_item, tag, get_tag);
+        put_int(get_item->id);
+    }
+    put_str("\n");
+    //*/
+
+    /*
+    put_str("test list_empty\n");
+    if(list_empty(&all_tag)) {
+        put_str("list is empty.\n");
+    } else {
+        put_str("list is NOT empty.\n");
+    }
+    //*/
+
+    /*
+    put_str("test list_len\n");
+    int len = list_len(&all_tag);
+    put_str("list length: ");
+    put_int(len);
+    put_str("\n");
+    //*/
+
+    /*
+    put_str("test list_find\n");
+    if (list_find(&all_tag, &node3.tag)) {
+        put_str("Found.\n");
+    } else {
+        put_str("NOT Found.\n");
+    }
+    //*/
+
+    /*
+    put_str("test list_traversal\n");
+    get_tag = list_traversal(&all_tag, check_id, 0x333);
+    if (NULL == get_tag) {
+        put_str("NOT Found\n");
+    } else {
+        get_item = elem2entry(struct test_item, tag, get_tag);
+        put_str("Found: ");
+        put_int(get_item->id);
+        put_str("\n");
+    }
+    //*/
+
+    // print all list
+    struct list_elem *cur_elem = all_tag.head.next;
+    struct test_item *aaa;
+    put_str("list: head->");
+    while (cur_elem != &all_tag.tail)
+    {
+        aaa = elem2entry(struct test_item, tag, cur_elem);
+        put_int(aaa->id);
+        put_str("->");
+        cur_elem = cur_elem->next;
+    }
+    put_str("tail\n");
 }
 
 //=========================
@@ -303,5 +433,8 @@ void test_all()
     // test_string();
 
     /* bitmap.h */
-    test_bitmap();
+    // test_bitmap();
+
+    /* list.h */
+    test_list();
 }

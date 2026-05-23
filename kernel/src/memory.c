@@ -79,9 +79,9 @@ static uint32_t *pde_ptr(void *vaddr)
 static uint32_t *pte_ptr(void *vaddr)
 {
     uint32_t vaddr_val = (uint32_t)vaddr;
-    uint32_t *pte = (uint32_t)(0xffc00000 +
-                               ((vaddr_val & 0xffc0000) >> 10) +
-                               PTE_IDX(vaddr_val) * 4);
+    uint32_t *pte = (uint32_t *)(0xffc00000 +
+                                 ((vaddr_val & 0xffc00000) >> 10) +
+                                 PTE_IDX(vaddr_val) * 4);
 
     return pte;
 }
@@ -92,9 +92,9 @@ static uint32_t *pte_ptr(void *vaddr)
  * Formula: physical address = pte[31:12] + vaddr[11:0]
  *
  * @param vaddr
- * @return uint32_t*
+ * @return uint32_t
  */
-static uint32_t *addr_v2p(void *vaddr)
+static uint32_t addr_v2p(void *vaddr)
 {
     uint32_t *pte = pte_ptr(vaddr);
     uint32_t vaddr_val = (uint32_t)vaddr;
@@ -270,7 +270,7 @@ static void *page_acquire(struct v_pool *vp, struct p_pool *pp, void *vaddr, int
 
     /* Acquire physical address */
     void *vaddr_idx = vaddr_ret;
-    for (int i = 0; i < pg_cnt; vaddr_idx += pg_cnt, i++)
+    for (int i = 0; i < pg_cnt; vaddr_idx += PG_SIZE, i++)
     {
         paddr = palloc(pp);
         if (NULL == paddr)
@@ -428,8 +428,9 @@ static struct arena *block2arena(struct mem_block *b)
  *
  * @param vp         Virtual memory pool.
  * @param pp         Physical memory pool.
- * @param mblock     Array of memory block descriptors.
- * @param mblock_idx Index into mblock array (selects block size).
+ * @param mblock     Array of memory block descriptors, each entry represents a block size spec
+ * 			(16, 32, 64, 128, 256, 512, 1024)
+ * @param mblock_idx Index selecting which block size spec to use.
  * @return Pointer to allocated block, or NULL on failure.
  */
 static void *mem_acquire(struct v_pool *vp, struct p_pool *pp,
@@ -449,10 +450,10 @@ static void *mem_acquire(struct v_pool *vp, struct p_pool *pp,
         memset(a, 0, PG_SIZE);
         a->p_mem_block = &mblock[mblock_idx];
         a->cnt = mblock[mblock_idx].blocks_per_arena;
-        a->is_cnt = false;
+        a->is_page_cnt = false;
 
         /* Split arena into blocks and add to free list. */
-        for (int idx = 0; idx < mblock[mblock_idx].blocks_pre_arena; idx++)
+        for (int idx = 0; idx < mblock[mblock_idx].blocks_per_arena; idx++)
         {
             b = arena2block(a, idx);
             list_append(&a->p_mem_block->free_list, &b->free_elem);
@@ -499,3 +500,131 @@ static void mem_release(struct v_pool *vp, struct p_pool *pp, void *vaddr)
 //=========================
 // external functions
 //=========================
+
+void *page_malloc(enum pool_flags pf, void *vaddr, int pg_cnt)
+{
+    void *vaddr_start = NULL;
+
+    if (PF_KERNEL == pf)
+    {
+        vaddr_start = page_acquire(&k_v_pool, &k_p_pool, vaddr, pg_cnt);
+    }
+    else if (PF_USER == pf)
+    {
+        // TODO: user process
+    }
+    else
+    {
+        // invalid pool flag
+        return NULL;
+    }
+
+    return vaddr_start;
+}
+
+void page_free(enum pool_flags pf, void *vaddr, int pg_cnt)
+{
+
+    if (PF_KERNEL == pf)
+    {
+        page_release(&k_v_pool, &k_p_pool, vaddr, pg_cnt);
+    }
+    else if (PF_USER == pf)
+    {
+        // TODO: user process
+    }
+    else
+    {
+        // invalid pool flag
+        return;
+    }
+
+    return;
+}
+
+void *sys_malloc(uint32_t size)
+{
+    struct mem_block_desc *mblock = NULL;
+    struct v_pool *vp;
+    struct p_pool *pp;
+    void *vaddr = NULL;
+
+    // TODO: determine whether it is in kernel space or user space
+    mblock = k_mem_block;
+    vp = &k_v_pool;
+    pp = &k_p_pool;
+
+    if (size > 1024)
+    {
+        uint32_t page_cnt = DIV_ROUND_UP(size + sizeof(struct arena), PG_SIZE);
+        struct arena *a = (struct arena *)page_acquire(vp, pp, NULL, page_cnt);
+        if (NULL == a)
+        {
+            return NULL;
+        }
+        memset(a, 0, page_cnt * PG_SIZE);
+        /* set arena info */
+        a->p_mem_block = NULL;
+        a->cnt = page_cnt;
+        a->is_page_cnt = true;
+        /* return arena info next block */
+        vaddr = (void *)(a + 1);
+    }
+    else
+    {
+        /* using memory block and find a suitable size (size <= 1024) */
+        uint8_t mblock_idx = 0;
+        for (mblock_idx = 0; mblock_idx < MEM_BLOCK_CNT; mblock_idx++)
+        {
+            if (size <= mblock[mblock_idx].block_size)
+            {
+                break;
+            }
+        }
+
+        vaddr = mem_acquire(vp, pp, mblock, mblock_idx);
+    }
+
+    return vaddr;
+}
+
+void sys_free(void *vaddr)
+{
+    struct v_pool *vp;
+    struct p_pool *pp;
+    struct arena *a = block2arena((struct mem_block *)vaddr);
+
+    // TODO: determine whether it is in kernel space or user space
+    vp = &k_v_pool;
+    pp = &k_p_pool;
+
+    if (a->is_page_cnt)
+    {
+        page_release(vp, pp, a, a->cnt);
+    }
+    else
+    {
+        /* memory block */
+        mem_release(vp, pp, vaddr);
+    }
+}
+
+void mem_block_init(struct mem_block_desc *p_mem_block)
+{
+    uint32_t block_size = 16;
+    for (int idx = 0; idx < MEM_BLOCK_CNT; idx++, block_size *= 2)
+    {
+        p_mem_block[idx].block_size = block_size;
+        p_mem_block[idx].blocks_per_arena =
+            (PG_SIZE - sizeof(struct arena)) / block_size;
+        list_init(&p_mem_block[idx].free_list);
+    }
+}
+
+void mem_init()
+{
+    TRACE_STR("mem_init()\n");
+    uint32_t mem_total_size = (*(uint32_t *)MEM_SIZE_ADDR);
+    pool_init(mem_total_size);
+    mem_block_init(k_mem_block);
+}

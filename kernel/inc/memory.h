@@ -33,10 +33,13 @@
 #define PG_US_S (0x0 << 2) // supervisor
 #define PG_US_U (0x1 << 2) // user
 
+/**
+ * @brief Selects which memory pool an allocation or release operates on.
+ */
 enum pool_flags
 {
-    PF_KERNEL = 1,
-    PF_USER = 2
+    PF_KERNEL = 1, /**< Kernel physical + virtual pool. */
+    PF_USER = 2    /**< User-process physical + virtual pool (not yet implemented). */
 };
 
 /**
@@ -115,20 +118,128 @@ struct v_pool
     struct bitmap vaddr_bitmap;
 };
 
+/**
+ * @brief Descriptor for one fixed-size block class used by the slab-style allocator.
+ *
+ * Each descriptor represents one block size (16, 32, 64, 128, 256, 512, or 1024 bytes).
+ * Arenas are carved into @p blocks_per_arena blocks of @p block_size bytes;
+ * free blocks are linked through @p free_list.
+ */
 struct mem_block_desc
 {
-    uint32_t block_size;
-    uint32_t blocks_per_arena;
-    struct list free_list;
+    uint32_t block_size;       /**< Size in bytes of each block managed by this descriptor. */
+    uint32_t blocks_per_arena; /**< Number of blocks that fit in one arena page. */
+    struct list free_list;     /**< Intrusive list of currently free blocks. */
 };
 
 //=========================
 // function
 //=========================
+/**
+ * @brief Allocate @p pg_cnt pages from the pool selected by @p pf.
+ *
+ * @details
+ * Acquires virtual addresses from the corresponding virtual pool and
+ * physical frames from the corresponding physical pool, then wires them
+ * together in the page table.
+ * - If @p vaddr is NULL the allocator picks a free virtual address automatically.
+ * - If @p vaddr is non-NULL the allocation starts at that exact address;
+ *   fails if any page in the range is already in use.
+ *
+ * @todo Support PF_USER (user-process pool) and reject invalid pool flags.
+ *
+ * @param pf      Pool selector: PF_KERNEL or PF_USER.
+ * @param vaddr   Desired starting virtual address, or NULL for auto-allocation.
+ * @param pg_cnt  Number of consecutive pages to allocate.
+ * @return        Starting virtual address of the allocated region,
+ *                or NULL on failure.
+ */
 void *page_malloc(enum pool_flags pf, void *vaddr, int pg_cnt);
+
+/**
+ * @brief Release @p pg_cnt pages starting at @p vaddr back to the pool selected by @p pf.
+ *
+ * @details
+ * For each page in [@p vaddr, @p vaddr + @p pg_cnt * PG_SIZE):
+ *   1. Resolves the physical address and frees the frame to the physical pool.
+ *   2. Clears the PTE and invalidates the TLB entry via @c invlpg.
+ * Finally returns the virtual address range to the virtual pool bitmap.
+ *
+ * @todo Support PF_USER (user-process pool) and reject invalid pool flags.
+ *
+ * @param pf      Pool selector: PF_KERNEL or PF_USER.
+ * @param vaddr   Starting virtual address of the region to free.
+ * @param pg_cnt  Number of consecutive pages to free.
+ */
 void page_free(enum pool_flags pf, void *vaddr, int pg_cnt);
+
+/**
+ * @brief Allocate @p size bytes from the kernel heap.
+ *
+ * @details
+ * Two allocation strategies are selected automatically:
+ * - **size <= 1024** : Uses the slab-style block allocator.  Finds the
+ *   smallest block class whose @c block_size >= @p size, refills the free
+ *   list with a fresh arena page if necessary, then pops one block.
+ * - **size > 1024**  : Allocates whole pages directly.  Computes
+ *   @c DIV_ROUND_UP(size + sizeof(arena), PG_SIZE) pages, places an arena
+ *   header at the start, and returns the address immediately after it.
+ *
+ * The returned memory is zeroed in both cases.
+ *
+ * @todo Determine whether the caller is in kernel space or user space
+ *       and select the appropriate pools accordingly.
+ *
+ * @param size  Number of bytes to allocate.
+ * @return      Pointer to the allocated memory, or NULL on failure.
+ */
 void *sys_malloc(uint32_t size);
+
+/**
+ * @brief Free memory previously allocated by sys_malloc().
+ *
+ * @details
+ * Derives the arena header from @p vaddr and inspects @c arena.is_page_cnt:
+ * - **true**  (large allocation) : releases @c arena.cnt whole pages via
+ *   page_release(), which also clears the PTEs and frees physical frames.
+ * - **false** (block allocation) : returns the block to the arena's free
+ *   list.  If all blocks in the arena become free, the entire arena page
+ *   is released back to the pool.
+ *
+ * @todo Determine whether the caller is in kernel space or user space
+ *       and select the appropriate pools accordingly.
+ *
+ * @param vaddr  Pointer previously returned by sys_malloc(); must not be NULL.
+ */
 void sys_free(void *vaddr);
+
+/**
+ * @brief Initialize the entire memory subsystem.
+ *
+ * @details
+ * Reads the total physical memory size stored at MEM_SIZE_ADDR by the
+ * bootloader, then calls pool_init() to set up the kernel and user physical
+ * pools and the kernel virtual address pool, and finally calls
+ * mem_block_init() to prepare the seven kernel slab block descriptors
+ * (16 / 32 / 64 / 128 / 256 / 512 / 1024 bytes).
+ *
+ * Must be called once during kernel initialization before any memory
+ * allocation function is used.
+ */
 void mem_init(void);
+
+/**
+ * @brief Initialize an array of MEM_BLOCK_CNT memory block descriptors.
+ *
+ * @details
+ * Fills @p p_mem_block[0..MEM_BLOCK_CNT-1] with block sizes
+ * 16, 32, 64, 128, 256, 512, and 1024 bytes respectively.
+ * For each descriptor, @c blocks_per_arena is computed as
+ * @c (PG_SIZE - sizeof(arena)) / block_size, and the free list is
+ * initialized empty.
+ *
+ * @param p_mem_block  Pointer to an array of at least MEM_BLOCK_CNT
+ *                     mem_block_desc entries to initialize.
+ */
 void mem_block_init(struct mem_block_desc *p_mem_block);
 #endif

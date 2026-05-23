@@ -8,15 +8,17 @@
 //=========================
 // internal struct
 //=========================
-struct arean
+/**
+ * @brief Arena header stored at the start of each allocated page.
+ *
+ * Tracks whether the page is used as a large allocation (page count)
+ * or split into fixed-size blocks (block count).
+ */
+struct arena
 {
-    struct mem_block_desc *p_mem_block;
-    /**
-     * If is_page_cnt is true, cnt represents the number of pages.
-     * Otherwise, cnt represents the number of memory blocks.
-     */
-    uint32_t cnt;
-    bool is_page_cnt;
+    struct mem_block_desc *p_mem_block; /* Descriptor defining block size and free list. */
+    uint32_t cnt;                       /* Page count if is_page_cnt=true, else free block count. */
+    bool is_page_cnt;                   /* true = large alloc (pages), false = small alloc (blocks). */
 };
 
 /* For each meory block in arena */
@@ -406,3 +408,94 @@ static void pool_init(uint32_t mem_total_size)
     TRACE_INT((uint32_t)k_v_pool.vaddr_bitmap.bits);
     TRACE_STR("\n");
 }
+
+static struct mem_block *arena2block(struct arena *a, uint32_t idx)
+{
+    return (struct mem_block *)((uint32_t)a + sizeof(struct arena) + idx * a->p_mem_block->block_size);
+}
+
+static struct arena *block2arena(struct mem_block *b)
+{
+    return (struct arena *)((uint32_t)b & 0xfffff000);
+}
+
+/**
+ * @brief Acquire a memory block from the pool.
+ *
+ * If the free list is empty, allocates a new arena (1 page),
+ * splits it into blocks, and adds them to the free list.
+ * Then pops one block from the free list and returns it.
+ *
+ * @param vp         Virtual memory pool.
+ * @param pp         Physical memory pool.
+ * @param mblock     Array of memory block descriptors.
+ * @param mblock_idx Index into mblock array (selects block size).
+ * @return Pointer to allocated block, or NULL on failure.
+ */
+static void *mem_acquire(struct v_pool *vp, struct p_pool *pp,
+                         struct mem_block_desc *mblock, uint32_t mblock_idx)
+{
+    struct arena *a;
+    struct mem_block *b;
+
+    if (list_empty(&mblock[mblock_idx].free_list))
+    {
+        /* Allocate a new page as arena. */
+        a = (struct arena *)page_acquire(vp, pp, NULL, 1);
+        if (NULL == a)
+            return NULL;
+
+        /* Initialize arena metadata. */
+        memset(a, 0, PG_SIZE);
+        a->p_mem_block = &mblock[mblock_idx];
+        a->cnt = mblock[mblock_idx].blocks_per_arena;
+        a->is_cnt = false;
+
+        /* Split arena into blocks and add to free list. */
+        for (int idx = 0; idx < mblock[mblock_idx].blocks_pre_arena; idx++)
+        {
+            b = arena2block(a, idx);
+            list_append(&a->p_mem_block->free_list, &b->free_elem);
+        }
+    }
+
+    /* Pop one block from free list. */
+    b = elem2entry(struct mem_block, free_elem,
+                   list_pop(&mblock[mblock_idx].free_list));
+
+    memset(b, 0, mblock[mblock_idx].block_size);
+
+    /* Decrement arena's free block count. */
+    a = block2arena(b);
+    a->cnt--;
+
+    return (void *)b;
+}
+
+static void mem_release(struct v_pool *vp, struct p_pool *pp, void *vaddr)
+{
+    struct mem_block *b = vaddr;
+    struct arena *a = block2arena(b);
+
+    list_append(&a->p_mem_block->free_list, &b->free_elem);
+    a->cnt++;
+
+    /**
+     * Check whether all memory blocks in this arena are free
+     * if so, release the arena.
+     */
+    if (a->cnt == a->p_mem_block->blocks_per_arena)
+    {
+        int idx = 0;
+        for (idx = 0; idx < a->p_mem_block->blocks_per_arena; idx++)
+        {
+            b = arena2block(a, idx);
+            list_remove(&b->free_elem);
+        }
+        page_release(vp, pp, a, 1);
+    }
+}
+
+//=========================
+// external functions
+//=========================

@@ -421,6 +421,25 @@ void test_list()
 //=========================
 // memory.h
 //=========================
+/*===== Bitmap state verification ======
+ *
+ * Break point: b 0x1036
+ *
+ * Physical bitmap (x 0xC007_6000):
+ *   => 0x0000_007F = 111_1111
+ *   => 7 pages allocated: vaddr1[3] + vaddr3[3] + sys_malloc[1]
+ *
+ * Kernel virtual bitmap (x 0xC009_6000):
+ *   => 0x0000_038F = 11_1000_1111
+ *   => bit 0~2  : vaddr1[3]
+ *   => bit 3    : sys_malloc[1]
+ *   => bit 4~6  : None
+ *   => bit 7~9  : vaddr3[3]
+ *
+ * Note: virtual bitmap has 3 extra bits vs physical bitmap
+ *       because vaddr2 allocation failed after marking virtual pages,
+ *       leaving a hole at bit 4~6 with no corresponding physical pages.
+ */
 void test_memory(bool test_free, bool test_list)
 {
     /*===== 1. Test page malloc ======*/
@@ -454,17 +473,46 @@ void test_memory(bool test_free, bool test_list)
     }
 
     /*===== 3. Test  system malloc  ======*/
+    /* Test return 0xC010_300c
+     * 0xC010_0000 -> page 0 1 (used, page_malloc vaddr_1)
+     * 0xC010_1000 -> page 1 1 (used, page_malloc vaddr_1)
+     * 0xC010_2000 -> page 2 1 (used, page_malloc vaddr_1)
+     * 0xC010_3000 -> page 3 0 <- sys_malloc 從這裡開始
+     * c is arena space 12 byte
+     */
     put_str("test sys_malloc(31): ");
     void *vaddr_4 = sys_malloc(31);
     put_int((uint32_t)vaddr_4);
     put_str("\n");
 
+    /* Test return 0xC010_302c
+     * 20 is 32 byte
+     *
+     */
     put_str("test sys_malloc(29): ");
     void *vaddr_5 = sys_malloc(29);
     put_int((uint32_t)vaddr_5);
     put_str("\n");
 
-    /*===== 4. Test check link list  ======*/
+    /*===== 4. Test mem_block free list ======
+     *
+     * Traverse all 7 mem_block_desc free lists and print
+     * the number of available blocks for each size class.
+     *
+     * Expected output (after sys_malloc(31) + sys_malloc(29)):
+     *   16  byte free list: 0   (no arena allocated for this size)
+     *   32  byte free list: 7D  (one arena allocated, 2 blocks used)
+     *   64  byte free list: 0
+     *   128 byte free list: 0
+     *   256 byte free list: 0
+     *   512 byte free list: 0
+     *   1024 byte free list: 0
+     *
+     * Note: sys_malloc(31) and sys_malloc(29) both fit into 32-byte class.
+     *       One arena (1 page = 4KB) was created for the 32-byte class.
+     *       blocks_per_arena = (4096 - sizeof(arena)) / 32 = 127 = 0x7F
+     *       After 2 allocations: 127 - 2 = 125 = 0x7D free blocks remaining.
+     */
     if (test_list)
     {
 
@@ -518,5 +566,5 @@ void test_all()
     // test_list();
 
     /* memory.h */
-    test_memory(0, 1);
+    test_memory(1, 0);
 }

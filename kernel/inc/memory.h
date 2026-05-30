@@ -5,23 +5,6 @@
 #include "list.h"
 
 //=========================
-// debugging
-//=========================
-#define DEBUG (1)
-#define TRACE_STR(x)    \
-    do                  \
-    {                   \
-        if (DEBUG)      \
-            put_str(x); \
-    } while (0)
-#define TRACE_INT(x)    \
-    do                  \
-    {                   \
-        if (DEBUG)      \
-            put_int(x); \
-    } while (0)
-
-//=========================
 // define
 // *pte = paddr | PG_US_U | PG_RW_W | PG_P_1
 //=========================

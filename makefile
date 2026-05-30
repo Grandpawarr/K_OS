@@ -25,6 +25,7 @@ LDFLAGS = -m elf_i386 -Ttext $(KERNEL_ENTRY) -e main -z noexecstack
 LIB_INC = ./lib/inc
 KERNEL_INC = ./kernel/inc
 USR_INC = ./usr/inc
+TEST_INC = ./test/inc
 
 #####################################
 #		Source Files				#
@@ -32,6 +33,7 @@ USR_INC = ./usr/inc
 LIB_SRC = ./lib/src
 KERNEL_SRC = ./kernel/src
 USR_SRC = ./usr/src
+TEST_SRC = ./test/src
 
 #####################################
 #		Output Files				#
@@ -59,10 +61,13 @@ $(BUILD_DIR)/%.o: $(LIB_SRC)/%.c
 	$(CC) $(CFLAGS) -I $(LIB_INC) $< -o $@
 
 $(BUILD_DIR)/%.o: $(KERNEL_SRC)/%.c
-	$(CC) $(CFLAGS) -I $(LIB_INC) -I $(KERNEL_INC) $< -o $@
+	$(CC) $(CFLAGS) -I $(LIB_INC) -I $(KERNEL_INC) -I $(TEST_INC) $< -o $@
 
 $(BUILD_DIR)/%.o: $(USR_SRC)/%.c
 	$(CC) $(CFLAGS) -I $(LIB_INC) -I $(USR_INC) $< -o $@
+
+$(BUILD_DIR)/%.o: $(TEST_SRC)/%.c
+	$(CC) $(CFLAGS) -I $(LIB_INC) -I $(KERNEL_INC) -I $(TEST_INC) $< -o $@
 
 #####################################
 #      	Object Files: Assembly		#
@@ -82,6 +87,20 @@ $(BUILD_DIR)/%.o: $(USR_SRC)/%.s
 lib_obj		+= $(BUILD_DIR)/string.o 
 
 #####################################
+#		Test Object Files			#
+#####################################
+test_objs := $(BUILD_DIR)/test_all.o
+test_objs += $(BUILD_DIR)/test_print.o
+test_objs += $(BUILD_DIR)/test_string.o
+test_objs += $(BUILD_DIR)/test_bitmap.o
+test_objs += $(BUILD_DIR)/test_list.o
+test_objs += $(BUILD_DIR)/test_memory.o
+test_objs += $(BUILD_DIR)/test_interrupt.o
+
+$(BUILD_DIR)/test.o: $(test_objs)
+	$(LD) -m elf_i386 -r $^ -o $@
+
+#####################################
 #		Kernel Object Files			#
 #####################################
 kernel_obj += $(BUILD_DIR)/main.o
@@ -91,6 +110,8 @@ kernel_obj += $(BUILD_DIR)/bitmap.o
 kernel_obj += $(BUILD_DIR)/list.o
 kernel_obj += $(BUILD_DIR)/init.o
 kernel_obj += $(BUILD_DIR)/memory.o
+kernel_obj	+= $(BUILD_DIR)/kernel.o
+kernel_obj	+= $(BUILD_DIR)/interrupt.o
 kernel_obj += $(lib_obj)
 
 #####################################

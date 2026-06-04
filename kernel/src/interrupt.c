@@ -53,12 +53,12 @@
  */
 struct idt_desc
 {
-    uint16_t offset_1;  /**< Handler address bits [15:0]. */
-    uint16_t selector;  /**< Segment selector for the handler's code segment. */
-    uint16_t zero;      /**< Reserved; must be 0 per x86 specification. */
-    uint16_t attribute; /**< Gate attribute byte: P | DPL | 0 | type. */
-    uint16_t offset_2;  /**< Handler address bits [31:16]. */
-};
+    uint16_t offset_1; /**< Handler address bits [15:0]. */
+    uint16_t selector; /**< Segment selector for the handler's code segment. */
+    uint8_t zero;      /**< Reserved; must be 0 per x86 specification. */
+    uint8_t attribute; /**< Gate attribute byte: P | DPL | 0 | type. */
+    uint16_t offset_2; /**< Handler address bits [31:16]. */
+} __attribute__((packed));
 
 /** @brief IDT table holding one descriptor per interrupt vector. */
 static struct idt_desc idt_table[IDT_VEC_MAX + 1];
@@ -219,7 +219,7 @@ static void idt_init(void)
     intr_name[0x1E] = "#SX Security Exception";
     // intr_name[0x1F] reserved
 
-    /* Step 4: pack IDTR operand (limit | base << 16) and load into CPU */
+    /* Step 4: pack IDTR operand (base-16 | limit-16) and load into CPU */
     uint64_t idt_operand = ((sizeof(idt_table) - 1) | ((uint64_t)(uint32_t)idt_table << 16));
     asm volatile("lidt %0" : : "m"(idt_operand));
 }

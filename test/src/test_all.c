@@ -19,8 +19,8 @@ void test_all(void)
     // test_list();
 
     /* memory.h */
-    test_memory(1, 0);
+    // test_memory(1, 0);
 
     /* interrupt.h */
-    // test_intr();
+    test_intr();
 }

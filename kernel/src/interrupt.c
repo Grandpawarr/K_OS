@@ -2,6 +2,7 @@
 #include "kernel.h"
 #include "stddef.h"
 #include "print.h"
+#include "io.h"
 
 //=========================
 // debugging
@@ -224,9 +225,83 @@ static void idt_init(void)
     asm volatile("lidt %0" : : "m"(idt_operand));
 }
 
+/**
+ * @brief Initialize and mask the dual 8259A Programmable Interrupt Controllers (PICs).
+ *
+ * This function programs both the master and slave 8259A PICs in cascade mode
+ * using the standard four Initialization Command Words (ICW1–ICW4), then masks
+ * all IRQ lines on both controllers so that no hardware interrupt reaches the CPU
+ * until individual drivers explicitly unmask their IRQ.
+ *
+ * @par Master PIC (base I/O: PIC_M_CTRL / PIC_M_DATA)
+ * | Command Word | Port         | Value | Meaning                                      |
+ * |:------------:|:------------:|:-----:|:---------------------------------------------|
+ * | ICW1         | PIC_M_CTRL   | 0x11  | Start init sequence; edge-triggered; ICW4 required |
+ * | ICW2         | PIC_M_DATA   | 0x20  | Remap IRQ0–IRQ7 to interrupt vectors 0x20–0x27     |
+ * | ICW3         | PIC_M_DATA   | 0x04  | Slave PIC is connected to master IRQ2 (bit mask)   |
+ * | ICW4         | PIC_M_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
+ * | IMR          | PIC_M_DATA   | 0xFF  | Mask all eight master IRQ lines                    |
+ *
+ * @par Slave PIC (base I/O: PIC_S_CTRL / PIC_S_DATA)
+ * | Command Word | Port         | Value | Meaning                                      |
+ * |:------------:|:------------:|:-----:|:---------------------------------------------|
+ * | ICW1         | PIC_S_CTRL   | 0x11  | Start init sequence; edge-triggered; ICW4 required |
+ * | ICW2         | PIC_S_DATA   | 0x28  | Remap IRQ8–IRQ15 to interrupt vectors 0x28–0x2F    |
+ * | ICW3         | PIC_S_DATA   | 0x02  | Slave identity: connected to master via IRQ2        |
+ * | ICW4         | PIC_S_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
+ * | IMR          | PIC_S_DATA   | 0xFF  | Mask all eight slave IRQ lines                     |
+ *
+ * @note After this call all hardware interrupts are suppressed.
+ *       To enable a specific IRQ, clear the corresponding bit in the
+ *       master or slave Interrupt Mask Register (IMR).
+ *
+ * @note The legacy 8259A conflicts with APIC on SMP systems.
+ *       This implementation targets single-processor (UP) x86 machines only.
+ *
+ * @see outb()
+ * @see PIC_M_CTRL, PIC_M_DATA, PIC_S_CTRL, PIC_S_DATA
+ */
+static void pic_init(void)
+{
+    /* Master PIC */
+    outb(PIC_M_CTRL, 0x11); /* ICW1: edge trigger mode, ICW4 needed */
+    outb(PIC_M_DATA, 0x20); /* ICW2: vector address start from 0x20 */
+    outb(PIC_M_DATA, 0x04); /* ICW3: IRQ2 for slave */
+    outb(PIC_M_DATA, 0x01); /* ICW4: 8086 mode, normal EOI */
+
+    /*  slave PIC */
+    outb(PIC_S_CTRL, 0x11); /* ICW1: edge trigger mode, ICW4 needed */
+    outb(PIC_S_DATA, 0x28); /* ICW2: vector address start from 0x28 */
+    outb(PIC_S_DATA, 0x02); /* ICW3: IRQ2 for slave */
+    outb(PIC_S_DATA, 0x01); /* ICW4: 8086 mode, normal EOI */
+
+    /* Mask all IRQ lines on both PICs until drivers unmask their own IRQ */
+    outb(PIC_M_DATA, 0xFE); /* master IMR: mask IRQ0–IRQ7  */
+    outb(PIC_S_DATA, 0xFF); /* slave  IMR: mask IRQ8–IRQ15 */
+}
+
 //=========================
 // external functions
 //=========================
+
+bool intr_get_status(void)
+{
+    uint32_t eflags = 0;
+    asm volatile("pushfl; popl %0" : "=g"(eflags));
+    return (eflags & 0x200) ? true : false;
+}
+
+void intr_set_status(bool intr_status)
+{
+    if (true == intr_status)
+    {
+        asm volatile("sti");
+    }
+    else
+    {
+        asm volatile("cli");
+    }
+}
 
 void register_handler(uint8_t vec, void *func)
 {
@@ -237,4 +312,5 @@ void intr_init()
 {
     TRACE_STR("intr_init()\n");
     idt_init();
+    pic_init();
 }

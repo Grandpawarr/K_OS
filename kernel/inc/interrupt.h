@@ -45,6 +45,25 @@
  */
 extern void *intr_entry[IDT_DESC_CNT];
 
+/**
+ * @brief Assembly entry point for the system-call gate (vector 0x80).
+ *
+ * Installed in the IDT at vector 0x80 with DPL=3, allowing user-space
+ * programs (CPL=3) to enter the kernel via @c int @c 0x80 without
+ * triggering a #GP fault.  Upon entry the CPU has already performed the
+ * ring-3 → ring-0 privilege switch: CS is set to @ref SELECTOR_K_CODE
+ * and the stack is switched to the kernel stack defined in the TSS.
+ *
+ * Unlike the generic stubs in @ref intr_entry[], this entry point is
+ * dedicated to system-call dispatch and does not go through the
+ * @ref intr_func[] table.
+ *
+ * @note Declared as returning @c void* to match the function-pointer
+ *       convention used in this subsystem; the actual ABI is defined
+ *       in the assembly source.
+ */
+extern void *syscall_entry(void);
+
 //=========================
 // function
 //=========================

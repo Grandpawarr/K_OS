@@ -338,3 +338,6 @@ ch05 Interrupt
 - test interrupt
 - interrupt - 8296 Implement
 - test 8295
+- interrupt - syscall 
+- test syscall
+- 差syscall_usr for test

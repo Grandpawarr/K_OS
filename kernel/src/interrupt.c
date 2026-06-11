@@ -130,13 +130,29 @@ static void intr_general_handler(uint8_t vec)
 /**
  * @brief Populate a single 32-bit interrupt-gate IDT descriptor.
  *
- * The attribute byte is composed as:
- *   - bits[7:5] : P (present) and DPL, extracted from @p attr via (attr >> 8) & 0xE0
- *   - bits[3:0] : gate type 0x0E = 32-bit interrupt gate (clears IF on entry)
+ * The @p attr argument reuses the GDT segment-descriptor bit layout, where
+ * the P bit lives at bit 15 and DPL occupies bits [14:13]:
+ *
+ * @code
+ *  GDT attr (16-bit):   bit15=P  bits[14:13]=DPL  ...
+ *  IDT attribute byte:  bit7 =P  bits[6:5]  =DPL  bit4=0  bits[3:0]=type
+ * @endcode
+ *
+ * Extraction: @c (attr>>8)&0xE0 shifts P|DPL from bits [15:13] down to
+ * bits [7:5], and the mask 0xE0 (11100000b) clears the lower five bits so
+ * only the P and DPL fields remain.  The gate type @c 0x0E is then OR-ed in
+ * to select a 32-bit interrupt gate, which causes the CPU to clear IF on entry.
+ *
+ * The IDT selector is always @ref SELECTOR_K_CODE (ring 0), so the handler
+ * always executes in ring 0 regardless of the DPL value.  DPL only governs
+ * which privilege levels may invoke the gate via a software @c int instruction:
+ * - DPL=0 : only ring-0 code or CPU-generated exceptions may use this gate.
+ * - DPL=3 : user-space code (CPL=3) may also trigger it via @c int (used for
+ *            system calls at vector 0x80).
  *
  * @param p_dest  Pointer to the IDT descriptor entry to fill.
- * @param attr    GDT-format attribute word (e.g. GDT_P_1 | GDT_DPL_0);
- *                only the P bit and DPL fields are used.
+ * @param attr    GDT-format attribute word (e.g. @c GDT_P_1|GDT_DPL_0 or
+ *                @c GDT_P_1|GDT_DPL_3); only bits [15:13] (P and DPL) are used.
  * @param func    Address of the interrupt handler routine.
  */
 static void make_idt_table(struct idt_desc *p_dest, uint32_t attr, void *func)
@@ -162,13 +178,18 @@ static void make_idt_table(struct idt_desc *p_dest, uint32_t attr, void *func)
  * @brief Initialize the Interrupt Descriptor Table (IDT) and load it into the CPU.
  *
  * Steps performed:
- *  1. For every vector in [0, IDT_VEC_MAX], set @ref intr_name to "unknown" and
- *     @ref intr_func to NULL.
+ *  1. For every vector in [0, IDT_VEC_MAX], set @ref intr_name to "unknown"
+ *     and @ref intr_func to NULL.
  *  2. For each vector that has an assembly entry stub in @c intr_entry[], call
- *     make_idt_table() to fill the descriptor and install intr_general_handler()
- *     as the default C-level handler.
- *  3. Assign human-readable names to the standard x86 exception vectors.
- *  4. Pack the IDT base address and limit into the IDTR format and execute @c lidt.
+ *     make_idt_table() with DPL=0 and install intr_general_handler() as the
+ *     default C-level handler.  DPL=0 prevents user-space code from triggering
+ *     hardware-interrupt or exception vectors via a software @c int instruction.
+ *  3. Install @c syscall_entry at vector 0x80 with DPL=3 so that user-space
+ *     programs (CPL=3) may invoke kernel services via @c int @c 0x80 without
+ *     triggering a #GP fault.  The CPU still switches to ring 0 on entry
+ *     because the IDT selector always points to @ref SELECTOR_K_CODE.
+ *  4. Assign human-readable names to the standard x86 exception vectors.
+ *  5. Pack the IDT base address and limit into the IDTR format and execute @c lidt.
  */
 static void idt_init(void)
 {
@@ -190,6 +211,10 @@ static void idt_init(void)
             intr_func[idx] = intr_general_handler;
         }
     }
+
+    /* For system call 0x80 */
+    attr = GDT_P_1 + GDT_DPL_3;
+    make_idt_table(&idt_table[0x80], attr, syscall_entry);
 
     /* Step 3: assign symbolic names to standard x86 exception vectors */
     intr_name[0x00] = "#DE Divide Error";

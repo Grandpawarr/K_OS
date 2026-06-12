@@ -16,7 +16,7 @@ LD = ld
 #####################################
 KERNEL_ENTRY = 0xc0001000
 ASFLAGS = -f elf
-CFLAGS = -c -m32 -fno-stack-protector -fno-builtin -nostdinc
+CFLAGS = -c -m32 -std=gnu11 -fno-stack-protector -fno-builtin -nostdinc  
 LDFLAGS = -m elf_i386 -Ttext $(KERNEL_ENTRY) -e main -z noexecstack
 
 #####################################

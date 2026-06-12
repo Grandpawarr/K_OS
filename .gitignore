@@ -1,2 +1,5 @@
-out
-build
+bochs-2.8/*
+!bochs-2.8/.bochsrc
+!bochs-2.8/gen.sh
+code/out
+code/build

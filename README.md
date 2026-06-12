@@ -1,343 +1,245 @@
 # K_OS
 
----
-
-## 開機流程總覽
+K_OS 是一個從零開始打造的 x86（IA-32）32-bit 教學用作業系統，從 MBR、Bootloader、保護模式、分頁機制一路實作到核心的記憶體管理、中斷子系統與系統呼叫（`int 0x80`）。開發與測試環境使用 [Bochs 2.8](https://bochs.sourceforge.io/) x86 模擬器。
 
 ```
 BIOS → MBR (0x7C00) → Loader (0x0A00) → Protected Mode → Paging → Kernel (0xC0001000)
 ```
 
+> 核心架構與各子系統的詳細說明請見 [`code/ARCHITECTURE.md`](code/ARCHITECTURE.md)。
+
 ---
 
-## 磁碟佈局
+## 專案結構
 
-| 磁區 (LBA) | 內容 | 大小 |
+```
+K_OS/
+├── readme.md          ← 本文件（安裝、架設、使用）
+├── bochs-2.8/         ← Bochs 2.8 原始碼（已編譯），含模擬器設定檔與磁碟映像
+│   ├── .bochsrc       ← Bochs 設定檔（CPU / 記憶體 / 硬碟 / 開機方式）
+│   └── 60mb.img       ← 60 MB 硬碟映像（K_OS 的開機磁碟）
+└── code/              ← K_OS 原始碼
+    ├── boot/          ← MBR 與 Loader（NASM 組語）
+    ├── kernel/        ← 核心（中斷、記憶體管理、系統呼叫、VGA 輸出）
+    ├── lib/           ← 通用函式庫（string、list）
+    ├── usr/           ← User 端程式碼（syscall wrapper）
+    ├── test/          ← 各子系統測試
+    ├── makefile
+    ├── build/         ← 編譯中間檔（.o）
+    └── out/           ← 編譯產出（mbr.bin / loader.bin / kernel.bin）
+```
+
+---
+
+## 環境需求
+
+| 工具 | 用途 | 版本參考 |
 |---|---|---|
-| 0 | MBR | 1 sector / 512 B |
-| 1 ~ 4 | Loader | 4 sectors / 2 KB |
-| 5 ~ 204 | Kernel ELF | 200 sectors / 100 KB |
+| `nasm` | 組譯 MBR / Loader / 核心組語 | 任意近代版本 |
+| `gcc`（含 32-bit multilib） | 編譯核心 C 程式碼（`-m32`） | 任意近代版本 |
+| `ld`（binutils） | 連結核心 ELF | 任意近代版本 |
+| `bochs` + `bximage` | x86 模擬器與磁碟映像工具 | 2.8 |
 
----
-
-## MBR（Master Boot Record）
-
-### 功能說明
-
-MBR 是磁碟第 0 個磁區（512 bytes），由 BIOS 在開機時自動載入至實體記憶體 `0x7C00`，並從該位址開始執行。  
-MBR 的主要職責只有一件事：**把 Loader 從磁碟讀進記憶體，然後跳過去**。
-
-| 功能 | 說明 |
-|---|---|
-| 初始化段暫存器 | DS / ES / SS / FS / GS 全部清為 0，確保定址正確 |
-| 設定堆疊 | SP = 0x8000，往低位址成長，避免和 MBR 程式碼碰撞 |
-| 印出訊息 | 使用 BIOS INT 0x10 在螢幕印出 `1 MBR` |
-| 讀取 Loader | 以 LBA 模式透過 ATA PIO 從磁碟讀取 Loader 至 0x800 |
-| 跳轉 Loader | `jmp 0x0A00`（0x800 起頭 512 bytes 為資料區，程式從 0xA00 開始） |
-
-### read_hd — ATA PIO 讀碟流程
-
-MBR 透過直接操作 ATA 控制器的 I/O port 讀磁碟，不依賴 BIOS：
-
-```
-step 1 │ port 0x1F2 ← sector count（cl）
-step 2 │ port 0x1F3 ← LBA[7:0]
-       │ port 0x1F4 ← LBA[15:8]
-       │ port 0x1F5 ← LBA[23:16]
-       │ port 0x1F6 ← 0xE0 | LBA[27:24]   ; 0xE0 = master drive + LBA mode
-step 3 │ port 0x1F7 ← 0x20                ; read with retry
-step 4 │ poll 0x1F7 直到 BSY=0 且 DRQ=1
-step 5 │ 從 port 0x1F0 每次讀 2 bytes，共讀 sector_count × 256 次
-```
-
-### 運作流程
-
-```
-[BIOS 上電]
-    │
-    ▼
-載入 MBR 至 0x7C00，跳轉執行
-    │
-    ├─ 初始化 DS/ES/SS/FS/GS = 0
-    ├─ SP = 0x8000
-    ├─ BIOS INT 0x10 取得游標位置
-    ├─ BIOS INT 0x10 印出 "1 MBR"
-    │
-    ├─ eax = LOADER_START_SECTOR (1)
-    ├─ bx  = LOADER_BASE_ADDR   (0x800)
-    ├─ cl  = LOADER_SECTOR_COUNT (4)
-    ├─ call read_hd              → Loader 載入至 0x800~0x9FF
-    │
-    └─ jmp LOADER_START_ADDR    → 0xA00
-```
-
-### 結構（512 bytes）
-
-```
-0x7C00 ┌─────────────────────────┐
-       │ 程式碼（初始化+讀碟+跳轉） │
-       │ msg db "1 MBR"           │
-       │ read_hd function         │
-       │ padding (0x00)           │
-0x7DFE ├─────────────────────────┤
-       │ 0x55 0xAA  (開機簽章)   │
-0x7E00 └─────────────────────────┘
-```
-
----
-
-## Loader（bootloader 第二階段）
-
-### 功能說明
-
-Loader 由 MBR 載入，負責把 CPU 從 16-bit 實模式帶到 32-bit 保護模式並開啟分頁，最後把 Kernel ELF 從磁碟讀進來、解析並跳轉至核心進入點。
-
-| 功能 | 說明 |
-|---|---|
-| 設定 GDT | 建立 code / data / video 三個段描述子 |
-| 取得記憶體大小 | 呼叫 BIOS INT 0x15/E820 取得 ARDS，計算最大可用記憶體 |
-| 進入保護模式 | 開啟 A20、載入 GDT、設定 CR0.PE=1，遠跳轉至 32-bit 程式碼 |
-| 建立分頁表 | 建立二層 (PD + PT) 分頁結構，核心映射至虛擬位址 0xC0000000 |
-| 開啟分頁 | 設定 CR3，設定 CR0.PG=1 |
-| 更新 GDT | 分頁啟動後修正 video 段與 GDT 基底位址（加上 0xC0000000） |
-| 讀取 Kernel | ATA PIO 讀取 200 個磁區至 0x70000 |
-| 解析 ELF | 依據 ELF program header 把各段複製到正確的虛擬位址 |
-| 跳轉核心 | `jmp 0xC0001000`（KERNEL_START_ADDR） |
-
-### GDT 段描述子
-
-| 索引 | 名稱 | 基底 | 大小 | 說明 |
-|---|---|---|---|---|
-| 0 | Null | — | — | 規定第一個必須為空 |
-| 1 | Code | 0x0 | 4 GB | 32-bit 可執行，DPL=0 |
-| 2 | Data | 0x0 | 4 GB | 32-bit 可讀寫，DPL=0 |
-| 3 | Video | 0xB8000 | 32 KB | VGA 文字模式顯示緩衝 |
-
-> 分頁啟動後，video_desc 的基底和 GDT 本身的位址都會加上 `0xC0000000`，使其在虛擬位址空間中正確可存取。
-
-### 分頁表配置
-
-採用 x86 二層分頁（Page Directory + Page Table），每頁 4 KB：
-
-```
-虛擬位址                 → 實體位址
-─────────────────────────────────────────────────
-0x0000_0000 ~ 0x000F_FFFF  → 0x0000_0000 ~ 0x000F_FFFF  (identity map，保護模式初期使用)
-0xC000_0000 ~ 0xC00F_FFFF  → 0x0000_0000 ~ 0x000F_FFFF  (核心低 1MB 映射)
-0xC010_0000 ~ 0xFFBF_FFFF  → 0x0010_2000 ~               (核心保留空間 PDE 769~1022)
-0xFFC0_0000 ~ 0xFFFF_FFFF  → 0x0010_0000                 (PDE[1023] 指向自身，遞迴映射)
-```
-
-Page Directory（PD）位於 `0x0010_0000`：
-
-| PDE 索引 | 指向 | 說明 |
-|---|---|---|
-| 0 | PT0 @ 0x101000 | 低 1MB identity map |
-| 768 | PT0 @ 0x101000 | 核心 0xC0000000 映射同一個 PT0 |
-| 769 ~ 1022 | PT1 ~ PT254 | 核心保留頁表空間 |
-| 1023 | PD 自身 | 遞迴映射，方便日後動態修改頁表 |
-
-### ELF 解析流程（kernel_decode_elf）
-
-```
-1. 從 ELF header 讀取：
-     e_phoff    : program header table 起始位移
-     e_phnum    : program header 數量
-     e_phentsize: 每個 program header 的大小
-
-2. 遍歷每個 program header：
-     若 p_type == PT_LOAD (1)：
-         mem_cpy(p_vaddr, KERNEL_BASE_ADDR + p_offset, p_filesz)
-
-3. 核心各段被複製至正確的虛擬位址（0xC000_1000 起）
-```
-
-### 運作流程
-
-```
-[從 MBR 跳入 0xA00]
-    │
-    ├─ SP = LOADER_STACK_TOP (0x800)
-    ├─ BIOS INT 0x10 印出 "2 Loader"
-    │
-    ├─ BIOS INT 0x15/E820 取得所有 ARDS
-    │     └─ 找出最大記憶體位址 → 存入 ram_size
-    │
-    ├─ 開啟 A20 gate（port 0x92 bit1 = 1）
-    ├─ lgdt [gdtr]
-    ├─ CR0.PE = 1
-    └─ far jump → p_mode_start [32-bit]
-         │
-         ├─ DS/ES/SS/FS/GS = SELECTOR_DATA
-         ├─ ESP = LOADER_STACK_TOP
-         ├─ 直寫 VGA 印出 "3 Protected"
-         │
-         ├─ call setup_page
-         │     ├─ 清空 PD (0x100000)
-         │     ├─ PDE[0] = PDE[768] = PT0 | P|RW|S
-         │     ├─ PDE[769~1022] = PT1~PT254 | P|RW|S
-         │     └─ PDE[1023] = PD | P|RW|S
-         │     └─ 建立 PT0 的 256 個 PTE (0x0 ~ 0xFF000)
-         │
-         ├─ CR3 = PAGE_DIR_ADDR (0x100000)
-         ├─ CR0.PG = 1
-         │
-         ├─ 更新 video_desc base += 0xC0000000
-         ├─ 更新 gdtr.base    += 0xC0000000
-         ├─ lgdt [gdtr]
-         ├─ 直寫 VGA 印出 "4 Paging"
-         │
-         ├─ read_hd_32: sector 5, 200 sectors → 0x70000
-         ├─ call kernel_decode_elf
-         │     └─ 解析 ELF，複製各 PT_LOAD segment 至虛擬位址
-         │
-         ├─ ESP = KERNEL_STACK_TOP (0x9F000)
-         ├─ 直寫 VGA 印出 "5 Kernel"
-         └─ jmp KERNEL_START_ADDR → 0xC000_1000
-```
-
----
-
-## 記憶體配置圖
-
-```
-實體位址空間（開機至 Loader 階段）
-
-0x0000_0000 ┌─────────────────────────────┐
-            │ IVT (Interrupt Vector Table)│ 1 KB (BIOS)
-0x0000_0400 ├─────────────────────────────┤
-            │ BIOS Data Area              │ 256 B
-0x0000_0500 ├─────────────────────────────┤
-            │ (可用區域)                  │
-0x0000_0800 ├─────────────────────────────┤
-            │ Loader GDT + 資料區         │ 512 B  ← LOADER_BASE_ADDR
-            │   0x800 : GDT table         │
-            │   0x900 : ram_size          │
-            │   0x904 : ards_nr           │
-            │   0x908 : ards_buf          │
-0x0000_0A00 ├─────────────────────────────┤
-            │ Loader 程式碼               │ ← LOADER_START_ADDR
-            │ (stack 從 0x800 往下成長)   │
-0x0000_7C00 ├─────────────────────────────┤
-            │ MBR                         │ 512 B
-0x0000_7E00 ├─────────────────────────────┤
-            │ MBR stack (往下成長至 0x7E00)│ ← SP = 0x8000
-0x0000_8000 ├─────────────────────────────┤
-            │ (可用區域)                  │
-0x0007_0000 ├─────────────────────────────┤
-            │ Kernel ELF 原始載入區       │ 100 KB (200 sectors)
-            │ ← KERNEL_BASE_ADDR          │
-0x0008_8800 ├─────────────────────────────┤
-            │                             │
-0x0009_F000 ├─────────────────────────────┤
-            │ Kernel stack top            │ ← KERNEL_STACK_TOP
-0x000A_0000 ├─────────────────────────────┤
-            │ VGA / ROM / BIOS Reserved   │ 384 KB
-0x000B_8000 │   └─ VGA 文字模式緩衝       │ 32 KB
-0x0010_0000 ├─────────────────────────────┤ ← 1 MB 界線
-            │ Page Directory (PD)         │ 4 KB ← PAGE_DIR_ADDR
-0x0010_1000 ├─────────────────────────────┤
-            │ Page Table 0 (PT0)          │ 4 KB ← PAGE_TABLE_ADDR
-            │   涵蓋實體 0x0 ~ 0xFFFFF   │
-0x0010_2000 ├─────────────────────────────┤
-            │ Page Table 1 ~ 254          │ 254 × 4 KB
-            │   (核心保留空間 PDE 769~1022)│
-0x001F_F000 ├─────────────────────────────┤
-            │ ...                         │
-```
-
-```
-虛擬位址空間（分頁啟動後）
-
-0x0000_0000 ┌─────────────────────────────┐
-            │ 低 1MB identity map         │ → 實體 0x0 ~ 0xFFFFF
-0x0010_0000 ├─────────────────────────────┤
-            │ (未映射)                    │
-0xC000_0000 ├─────────────────────────────┤
-            │ 核心虛擬位址起點            │ → 實體 0x0 ~ 0xFFFFF
-0xC000_1000 │   └─ KERNEL_START_ADDR      │ 核心進入點
-0xFFBF_FFFF ├─────────────────────────────┤
-0xFFC0_0000 ├─────────────────────────────┤
-            │ 遞迴頁表映射區              │ PDE[1023] 指向 PD 自身
-0xFFFF_FFFF └─────────────────────────────┘
-```
-
----
-
-## 實作流程指引
-
-### 1. MBR 實作要點
-
-- **必須恰好 512 bytes**，最後兩個 byte 為 `0x55 0xAA`（由 `times 510-($-$$) db 0` 補齊）
-- `vstart=0x7C00`：告訴組譯器所有標號的基底位址，使 `msg` 等符號取得正確的絕對位址
-- 段暫存器需要明確初始化，因為 BIOS 不保證其值
-- ATA PIO 讀碟時 `eax` 需要先備份到 `esi`，因為 `out dx, al` 只用 AL 但 LBA 需要分次移位 EAX
-
-### 2. Loader GDT 配置要點
-
-- GDT 放在 Loader 的最前面（`vstart=LOADER_BASE_ADDR`），固定在 `0x800`
-- `times 256-($-$$) db 0`：預留空間給 32 個 GDT 項目（最多擴充用）
-- `times 512-($-$$) db 0`：確保程式碼從第二個磁區（`loader_start`）開始，對應 `LOADER_START_ADDR = 0xA00`
-- ram_size / ards_nr / ards_buf 固定在 GDT 區塊後（`0x900`），Kernel 之後可以從固定位址讀取
-
-### 3. 保護模式切換要點
-
-- 開啟 A20：寫入 port `0x92` bit 1，否則只能定址 1 MB
-- `lgdt` 需要在 CR0.PE 設定**前**完成
-- 設定 CR0.PE=1 後立即做 **far jump**（`jmp SELECTOR_CODE:p_mode_start`）清除指令管線
-- far jump 後才進入真正的 32-bit 保護模式，此後所有記憶體存取都經過 GDT
-
-### 4. 分頁表建立要點
-
-- 頁表本身存放於 1 MB 以上（`0x100000`），不會和開機區域衝突
-- PDE[0] 和 PDE[768] 指向同一個 PT0，讓低位址和高位址（0xC0000000）同時可存取相同的實體記憶體，使保護模式轉分頁的跳轉不會 page fault
-- PDE[1023] 指向 PD 自身（遞迴映射），日後核心可以透過特定虛擬位址修改頁表，不需要再知道實體位址
-- 開啟分頁後，video_desc 的基底位址必須加上 `0xC0000000`，否則後續透過 SELECTOR_VIDEO 寫螢幕時定址錯誤
-
-### 5. ELF 解析要點
-
-- Kernel 以 ELF32 格式編譯，先整個載入至暫存區 (`0x70000`)，再由 Loader 解析
-- 只處理 `p_type == PT_LOAD` 的段（type=1），略過其他段
-- 複製目標位址是 `p_vaddr`（虛擬位址，如 `0xC0001000`），此時分頁已開啟，可以直接寫入
-- 使用 `rep movsb` 做 byte-by-byte 複製（mem_cpy）
-
----
-
-## 建置與寫入
+Ubuntu / Debian 安裝編譯工具：
 
 ```bash
-# 編譯所有目標
-make all
-
-# 寫入磁碟映像（假設 disk.img 已建立）
-dd if=out/mbr.bin    of=disk.img bs=512 count=1  conv=notrunc
-dd if=out/loader.bin of=disk.img bs=512 seek=1   conv=notrunc
-dd if=out/kernel.bin of=disk.img bs=512 seek=5   conv=notrunc
+sudo apt update
+sudo apt install build-essential nasm gcc-multilib
 ```
 
 ---
 
-## 開發紀錄
+## 安裝架設
 
-ch03 loader (part2)
-- jump to kernel: source code
+### 1. 編譯並安裝 Bochs 2.8
 
-ch04 kernel
-- makefile: easy to compile all function
-- Print log by print.s
-- String function library
+本專案的 `bochs-2.8/` 已附上原始碼。需要啟用 **debugger** 與 X11 顯示（編譯前請先安裝 X11 開發套件，如 `xorg-dev` / `libgtk2.0-dev`）：
 
-ch05 Memory Management
-- bitmap implement
-- link list implement
-- memory management 
-- test
+```bash
+cd bochs-2.8
+./configure --enable-debugger --enable-x86-debugger --enable-iodebug \
+            --enable-all-optimizations --enable-cpu-level=6 \
+            --enable-pci --enable-plugins --enable-show-ips \
+            --with-all-libs --with-x --with-x11
+make -j$(nproc)
+sudo make install        # 安裝至 /usr/local/bin/bochs、/usr/local/bin/bximage
+```
 
-ch05 Interrupt
-- interrupt implement
-- test interrupt
-- interrupt - 8296 Implement
-- test 8295
-- interrupt - syscall 
-- test syscall
-- 差syscall_usr for test
+> 若 `bochs-2.8/` 內已有編譯好的 `bochs` 執行檔且系統已安裝過，可略過此步驟。
+
+### 2. 建立硬碟映像（已存在可略過）
+
+```bash
+cd bochs-2.8
+bximage
+# 選擇 1 (Create new floppy or hard disk image)
+# hd → flat → 容量 60M → 檔名 60mb.img
+```
+
+`.bochsrc` 中對應的設定為：
+
+```
+ata0-master: type=disk, mode=flat, path="60mb.img"
+boot: disk
+```
+
+---
+
+## 編譯 K_OS
+
+```bash
+cd code
+make all
+```
+
+會依序產出三個檔案到 `out/`：
+
+| 檔案 | 內容 | 寫入磁區 (LBA) |
+|---|---|---|
+| `mbr.bin` | MBR 開機磁區（512 bytes，結尾 `0x55AA`） | 0 |
+| `loader.bin` | 第二階段 Bootloader | 1 ~ 4 |
+| `kernel.bin` | 核心 ELF | 5 ~ 204 |
+
+清除編譯產物：
+
+```bash
+make clean
+```
+
+---
+
+## 寫入磁碟映像
+
+把三個 binary 依磁碟佈局寫入開機映像，`bochs-2.8/gen.sh` 已包好這三道指令：
+
+```bash
+cd bochs-2.8
+sh gen.sh
+```
+
+等同於：
+
+```bash
+cd code
+dd if=out/mbr.bin    of=../bochs-2.8/60mb.img bs=512 count=1 conv=notrunc
+dd if=out/loader.bin of=../bochs-2.8/60mb.img bs=512 seek=1  conv=notrunc
+dd if=out/kernel.bin of=../bochs-2.8/60mb.img bs=512 seek=5  conv=notrunc
+```
+
+---
+
+## 啟動 K_OS
+
+```bash
+cd bochs-2.8
+bochs -q -f .bochsrc
+```
+
+由於 Bochs 編譯時啟用了 debugger，啟動後會先停在 debugger 提示符，輸入 `c`（continue）開始模擬：
+
+```
+<bochs:1> c
+```
+
+常用 debugger 指令：
+
+| 指令 | 功能 |
+|---|---|
+| `c` | 繼續執行 |
+| `Ctrl-C` | 中斷執行回到 debugger |
+| `b 0x7c00` | 在實體位址設中斷點（如 MBR 進入點） |
+| `lb 0xC0001000` | 在線性位址設中斷點（如核心進入點） |
+| `xp /10wx 0xb8000` | 檢視實體記憶體（VGA 文字緩衝） |
+| `info tab` / `info gdt` / `info idt` | 檢視分頁表 / GDT / IDT |
+| `q` | 離開 Bochs |
+
+### 預期畫面
+
+開機過程依序印出 `1 MBR` → `2 Loader` → `3 Protected` → `4 Paging` → `5 Kernel`，
+進入核心後執行 `test/` 內的測試（預設為中斷與系統呼叫測試）：
+
+```
+Kernel main()
+...
+syscall_init()
+intr_get_status: 1
+test syscall0()
+sys_test_syscall0() called
+test_syscall1()
+sys_test_syscall1()
+argument 1: 0x111
+ret= 0x9527
+...
+ret= 0x9529
+```
+
+之後畫面出現 `vector number: 0x20` 訊息屬正常現象：開啟中斷後 timer（IRQ0）觸發，目前尚未註冊 timer handler，因此進入預設 handler。
+
+---
+
+## 開發流程
+
+修改程式碼後的完整迭代：
+
+```bash
+cd code
+make clean && make all
+cd ../bochs-2.8
+sh gen.sh
+bochs -q -f .bochsrc
+```
+
+### 切換測試項目
+
+要執行哪些子系統測試由 `code/test/src/test_all.c` 控制，取消註解即可啟用：
+
+```c
+void test_all(void)
+{
+    // test_string();
+    // test_bitmap();
+    // test_list();
+    // test_memory(1, 0);
+    test_intr();        /* 中斷 + 系統呼叫測試 */
+}
+```
+
+---
+
+## 疑難排解
+
+| 症狀 | 原因與解法 |
+|---|---|
+| `gcc: error: ... -m32` 或缺 32-bit header | 未安裝 multilib：`sudo apt install gcc-multilib` |
+| `error: 'bool' cannot be defined via 'typedef'` | GCC 15 起預設 C23，`bool` 成為關鍵字，與 `lib/inc/stdbool.h` 衝突。makefile 的 `CFLAGS` 已加 `-std=gnu11`，勿移除（`.vscode` 的 `cStandard` 只影響 IntelliSense，不影響實際編譯） |
+| `No rule to make target 'build/xxx.o'` | makefile 列出的 `.o` 找不到對應原始檔，確認 `.c`/`.s` 位於規則涵蓋的 `*/src/` 目錄（曾發生檔案誤放 `inc/` 且檔名帶隱藏字元） |
+| 編譯 Bochs 報 `X11/Xlib.h: No such file or directory` | 缺 X11 開發標頭：`sudo apt install libx11-dev` |
+| Bochs 一啟動就退出，log 出現 `>>PANIC<< Could not open wave output device` | `.bochsrc` 的 sound 指向已淘汰的 `/dev/dsp`，已改為 `sound: driver=dummy` |
+| Bochs 讀不到 MBR / 無法開機 | `.bochsrc` 的 `ata0-master` 路徑須指向 `60mb.img`（曾誤指不存在的 `30M.sample`）；且映像必須先以 `dd if=/dev/zero` 或 `bximage` 建立完整 60 MB，僅靠 `gen.sh` 寫入的 37 KB 會使磁碟幾何偵測失敗 |
+| Bochs 啟動報 `ROM: couldn't open ROM image` | `BXSHARE` 指不到 BIOS 檔，`export BXSHARE=/usr/local/share/bochs` 或指向 `bochs-2.8/bios/` |
+| 畫面停在 `2 Loader` 或黑畫面 | `60mb.img` 內容過舊，重新執行 `sh gen.sh` |
+| Bochs 出現 panic 詢問視窗 | `.bochsrc` 設定 `panic: action=ask`，可依提示選擇 continue 或進 debugger 排查 |
+| `ld: cannot find -lgcc` 等連結錯誤 | 同 multilib 問題，確認 `build-essential` 與 `gcc-multilib` 已安裝 |
+
+> 排查 Bochs 啟動問題時，先看 `bochs-2.8/bochsout.txt`。
+
+---
+
+## 目前進度
+
+- ch03 loader (part2)
+  - jump to kernel: source code
+- ch04 kernel
+  - makefile: easy to compile all function
+  - print log by print.s
+  - string function library
+- ch05 memory management
+  - bitmap implement
+  - linked list implement
+  - memory management
+  - test
+- ch05 interrupt
+  - interrupt implement + test
+  - 8259A PIC implement + test
+  - syscall (`int 0x80`) implement + test
+  - syscall_usr (user-side wrapper) for test

@@ -109,7 +109,7 @@ uint32_t sys_test_syscall2(uint32_t arg1, uint32_t arg2)
     put_str("\n");
     put_str("argument 2: 0x");
     put_int(arg2);
-    put_int("\n");
+    put_str("\n");
     return 0x9528;
 }
 

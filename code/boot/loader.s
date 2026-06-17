@@ -1,0 +1,477 @@
+%include "boot.inc"
+section loader vstart=LOADER_BASE_ADDR
+
+;-------------------------
+; GDT
+;-------------------------
+;                       base,       limit,      attribute
+gdt_base:   DESCRIPTOR  0x0,        0x0,        0x0
+code_desc:  DESCRIPTOR  0x0,        0xf_ffff,   GDT_G_4K \
+                                                + GDT_D_32 \
+                                                + GDT_L_32 \
+                                                + GDT_AVL_0 \
+                                                + GDT_P_1 \
+                                                + GDT_DPL_0 \
+                                                + GDT_S_SW \
+                                                + GDT_TYPE_CODE
+data_desc:  DESCRIPTOR  0x0,        0xf_ffff,   GDT_G_4K \
+                                                + GDT_D_32 \
+                                                + GDT_L_32 \
+                                                + GDT_AVL_0 \
+                                                + GDT_P_1 \
+                                                + GDT_DPL_0 \
+                                                + GDT_S_SW \
+                                                + GDT_TYPE_DATA
+video_desc: DESCRIPTOR  0xb_8000,   0x0_7fff,   GDT_G_1 \
+                                                + GDT_D_32 \
+                                                + GDT_L_32 \
+                                                + GDT_AVL_0 \
+                                                + GDT_P_1 \
+                                                + GDT_DPL_0 \
+                                                + GDT_S_SW \
+                                                + GDT_TYPE_DATA
+
+GDT_SIZE    equ $ - gdt_base
+GDT_LIMIT   equ GDT_SIZE - 1
+times 256-($-$$) db 0           ; total 32 GDT element
+
+;-------------------------
+; fix data location
+;-------------------------
+ram_size    dd 0        ; LOADER_BASE_ADDR + 0x100 = 0x900
+ards_nr     dd 0        ; number of ards
+ards_buf times 200 db 0 ; total 10 ards
+
+;-------------------------
+; GDT selector
+;-------------------------
+SELECTOR_CODE   equ (code_desc - gdt_base) + TI_GDT + RPL_0
+SELECTOR_DATA   equ (data_desc - gdt_base) + TI_GDT + RPL_0
+SELECTOR_VIDEO  equ (video_desc - gdt_base) + TI_GDT + RPL_0
+
+times 512-($-$$) db 0
+loader_start:
+;-------------------------
+; Set stack pointer
+;-------------------------
+    mov sp, LOADER_STACK_TOP
+
+;-------------------------
+; Get current cursor
+;-------------------------
+    mov ah, 0x03        ; function code: Get cursor position and shape
+    mov bh, 0x0         ; page number
+    int 0x10            ; bios interrupt call
+                        ; ouput: dh=row, dl=column
+
+;-------------------------
+; Print log
+;-------------------------
+; Using the bios interrupt to print message
+    mov bp, msg_1       ; absolute address of string
+    mov ah, 0x13        ; function code
+    mov al, 0x01        ; write mode
+    mov bh, 0x00        ; page number
+    mov bl, 0x05        ; font color is Magenta
+    mov cx, msg_1_len   ; length of string
+    add dh, 1           ; input: dh=row, dl=column
+    mov dl, 0           ; print to next line
+    int 0x10            ; bios interrupt call
+
+;-------------------------
+; Get RAM size
+;-------------------------
+; Get all ARDS
+get_ram_size:
+    xor ebx, ebx        ; for Bios, must be zero
+    mov edx, 0x534d4150 ; place "SMAP" into dx
+    mov di, ards_buf    
+e820:
+    mov eax, 0x0000e820 ; it changes after trigger interrupt
+    mov ecx, 20         ; size of ARDS
+    int 0x15            ; Bios interrupt
+    add di, cx          ; point to next buffer
+    inc word [ards_nr]  ; increase the number of ARDS
+    cmp ebx, 0x0        
+    jne e820
+
+; find the max adress
+    mov ebx, ards_buf   ; base address of ARDS
+    xor edx, edx        ; for max address
+    mov cx, [ards_nr]   ; loop count
+find_max_addr_loop:
+    mov eax, [ebx]      ; base address low bits
+    add eax, [ebx+8]    ; length low bits
+    cmp edx, eax        ; compare with max address
+    jae next_ards
+    mov edx, eax        ; udpate the max address
+next_ards:
+    add ebx, 20         ; next ARDS structure
+    loop find_max_addr_loop
+
+; Set RAM size
+    mov [ram_size], edx ; store the RAM size
+
+;-------------------------
+; enable protected mode
+;-------------------------
+; enable A20
+    in al, 0x92
+    or al, 0000_0010b
+    out 0x92, al
+
+; Load GDT
+    lgdt [gdtr]
+
+; Protection enable
+    mov eax, cr0
+    or eax, 0x0000_0001
+    mov cr0, eax
+
+    jmp SELECTOR_CODE:p_mode_start
+
+;-------------------------
+; protected mode start
+;-------------------------
+[bits 32]
+p_mode_start:
+    mov ax, SELECTOR_DATA
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov fs, ax
+    mov gs, ax
+    mov esp, LOADER_STACK_TOP    ; initial stack pointer (32bits)
+
+;-------------------------
+; print log
+;-------------------------
+    mov edi, msg_2
+    mov ecx, msg_2_len
+    call print_log
+
+;-------------------------
+; Enable memory paging
+;-------------------------
+    call setup_page
+
+; 2. Set page directory address
+    mov eax, PAGE_DIR_ADDR      ; 0x0010_0000
+    mov cr3, eax
+
+; 3. Enable memory paginh
+    mov eax, cr0
+    or eax, 0x8000_0000 ; [31:31] for enabling memory paging(register CR0 PG set to zero)
+    mov cr0, eax 
+
+;-------------------------
+; update GDT for video
+;-------------------------
+    sgdt [gdtr]             ; store to Ram
+    mov eax, 0xc000_0000
+    mov ebx, video_desc     
+    or [ebx + 4], eax
+    or [gdtr + 2], eax      ; update the gdt_base
+    lgdt [gdtr]             ; load to register
+
+;-------------------------
+; print log
+;-------------------------
+    mov edi, msg_3
+    mov ecx, msg_3_len
+    call print_log
+
+;-------------------------
+; load kernel
+;-------------------------
+    mov eax, KERNEL_START_SECTOR
+    mov ebx, KERNEL_BASE_ADDR
+    mov cl, KERNEL_SECTOR_COUNT
+    call read_hd_32
+
+;-------------------------
+; parsing kernel ELF
+;-------------------------
+    call kernel_decode_elf
+    mov esp, KERNEL_STACK_TOP
+
+;-------------------------
+; print log
+;-------------------------
+    mov edi, msg_4
+    mov ecx, msg_4_len
+    call print_log
+
+;-------------------------
+; jump to kernel
+;-------------------------
+    jmp KERNEL_START_ADDR
+
+;-------------------------
+; Pause the process
+;-------------------------
+    jmp $               ; only for debugging
+
+;-------------------------
+; setup memory paging
+;-------------------------
+setup_page:
+; Clear page directory
+    mov eax, 0x0
+    mov ebx, PAGE_DIR_ADDR              ; 0x0010_0000
+    mov esi, 0                          ; index of entry
+    mov ecx, 1024                       ; loop count(total 1024 * 4B = 4KB)
+clear_page_dir_loop:
+    mov [ebx + esi * 4], eax
+    inc esi
+    loop clear_page_dir_loop
+
+; Create page directory entry(PDE)
+; enrty 0 and 768 point to page table 0
+    mov eax, PAGE_TABLE_ADDR            ; page table 0 in 0x0010_1000
+    or eax, PG_US_S | PG_RW_W | PG_P    ; only supervisor | read and write | in memory
+    mov esi, 0                          ; index of entry
+    mov [ebx + esi * 4], eax            ; for 1 MB kernel
+    mov esi, 768                        ; index of entry
+    mov [ebx + esi * 4], eax            ; mapping the same 1 MB kernel
+
+; Reserve the kernel space, page table 769 - 1022
+    add eax, 0x1000                     ; 0x0010_2000
+    mov esi, 769                        ; index of entry
+    mov ecx, 254                        ; loop count 1022 - 769 + 1
+create_pde_loop:
+    mov [ebx + esi * 4], eax
+    inc esi
+    add eax, 0x1000                     ; 4KB
+    loop create_pde_loop
+
+; Last entry of PDE always point to itself
+    mov eax, PAGE_DIR_ADDR              ; 0x0010_0000
+    or eax, PG_US_S | PG_RW_W | PG_P    ; only supervisor | read and write | in memory
+    mov esi, 1023                       ; index of entry
+    mov [ebx + esi * 4], eax            ; point to itself(0x0000_1000)
+
+; Create page table entry (PTE) for page table 0
+    mov eax, 0x0                        ; for physical address
+    or eax, PG_US_S | PG_RW_W | PG_P
+    mov ebx, PAGE_TABLE_ADDR            ; 0x0010_1000
+    mov esi, 0                          ; index of page table
+    mov ecx, 256                        ; 4K * 256 = 1 MB
+create_pte_loop:
+    mov [ebx + esi * 4], eax
+    add eax, 0x1000
+    inc esi
+    loop create_pte_loop
+
+    ret
+
+;-------------------------
+; print log
+;   edi : address of message
+;   ecx : length of message
+;-------------------------
+print_log:
+; 1. Get current cursor, bx=current cursor
+; get high bits of cursor
+    mov dx, 0x03d4
+    mov al, 0x0e
+    out dx, al
+    mov dx, 0x03d5
+    in al, dx
+    mov bh, al
+
+; get low bits of cursor
+    mov dx, 0x03d4
+    mov al, 0x0f
+    out dx, al
+    mov dx, 0x03d5
+    in al, dx
+    mov bl, al
+
+; 2. Set bx to next line
+; dividend: dx:ax, quotient: ax, remainder: dx
+    xor dx, dx      ; clear to zero
+    mov ax, bx
+    mov si, 80
+    div si          ; ax: quotient/row, dx: remainder/column
+    sub bx, dx      ; minus remainder(80 characters per line)
+    add bx, 80      ; move to the beginning of next line
+
+    push bx         ; save next line position to stack (will be modified in loop)
+
+; 3. Print log
+    mov ax, SELECTOR_VIDEO
+    mov gs, ax
+    shl bx, 1       ; 1 char = 2 byte, 
+                    ; converted character indexing to exact byte offsets in memory
+    xor edx, edx    ; clear to zero
+putchar_loop:
+    mov byte al, [edi+edx]      ; get message
+    mov byte [gs:bx], al        ; set character ASCII
+    mov byte [gs:bx+1], 0x4e    ; set character color
+    add dx, 1                   ; string pointer
+    add bx, 2                   ; screen write pointer
+    loop putchar_loop           ; ecx is initialize at the beginning
+
+; 4. Set cursor after printed text
+    pop bx                      ; restore current line position from stack
+    add bx, dx                  ; dx = chars printed, move cursor to
+; set high bits of cursor
+    mov dx, 0x03d4
+    mov al, 0x0e
+    out dx, al
+    mov dx, 0x03d5
+    mov al, bh
+    out dx, al
+
+; set low bits of cursor
+    mov dx, 0x03d4
+    mov al, 0x0f
+    out dx, al
+    mov dx, 0x03d5
+    mov al, bl
+    out dx, al
+
+    ret
+
+;-------------------------
+; Read hard disk
+;   eax : LBA, logic base address
+;   ebx : RAM address
+;   ecx  : sector count
+;-------------------------
+read_hd_32:
+
+; step 1 : set sector count
+    mov esi, eax    ; backup eax
+                    ; cause port operation only accept al/ax
+    mov dx, 0x1f2   
+    mov al, cl
+    out dx, al
+    mov eax, esi    ; restore eax
+
+; step 2 : set LBA from ATA port 0x1f3 to 0x1f6
+    ; LBA[7:0]
+    mov dx, 0x1f3
+    out dx, al
+
+    ; LBA[15:8]
+    shr eax, 8          ; EAX lowest 8 bits is AL
+    mov dx, 0x1f4
+    out dx, al
+
+    ; LBA[23:16]
+    shr eax, 8  
+    mov dx, 0x1f5
+    out dx, al
+
+    ; LBA[27:24] and setting (LBA only 28 bits)
+    shr eax, 8
+    and al, 0x0f    ; mask: only keep the lower 4 bits, 
+                    ;       clear the higher 4 bits
+    or al, 0xe0     ; b'1110 for master drive / LBA addressing
+    mov dx, 0x1f6
+    out dx, al
+
+; step 3 : start read command
+    mov dx, 0x1f7   ; ATA(command register)
+    mov al, 0x20    ; ATA(read sectors with retry)
+    out dx, al
+
+; step 4 : polling status
+    polling:
+        nop             ; hardware delay
+        in al, dx
+        and al, 0x88    ; status register: [3]DRQ/[7]:BSY
+        cmp al, 0x08    ; Data is ready and not busy
+                        ; result store in EFLAGS(zf bit)
+        jnz polling     ; keep polling
+
+; step 5 : read data from hard disk
+    mov al, cl
+    mov dx, 256     ; sector count * 512 / 2 
+                    ; (2 byte for each read)
+    mul dx          ; ax = ax * dx (only support ax)
+    mov cx, ax      ; cx = total loop time
+    mov dx, 0x1f0
+    read:
+        in ax, dx
+        mov [ebx], ax
+        add ebx, 2
+        loop read
+
+        
+    ret
+
+;-------------------------
+; kernel decode ELF
+;-------------------------
+kernel_decode_elf:
+    xor eax, eax
+    xor ebx, ebx                    ; current program header
+    xor ecx, ecx                    ; number of program header  
+    xor edx, edx                    ; size of program header
+
+; load each program header
+    mov ebx, KERNEL_BASE_ADDR
+    mov eax, KERNEL_BASE_ADDR + E_PHOFF
+    add ebx, [eax]                  ; start of program header
+    mov eax, KERNEL_BASE_ADDR + E_PHNUM
+    mov cx, [eax]                   ; number of program header
+    mov eax, KERNEL_BASE_ADDR + E_PHENTSIZE
+    mov dx, [eax]                   ; size of program header
+each_program_header_loop:
+    mov eax, ebx + P_TYPE            ; type of program header
+    cmp byte [eax], PT_LOAD         ; only load PT_LOAD
+    jne next_program_header 
+
+    ; memory copy
+    push dword [ebx + P_FILESZ]     ;size
+    mov eax, [ebx + P_OFFSET]
+    add eax, KERNEL_BASE_ADDR
+    push eax
+    push dword [ebx + P_VADDR]    ; destination
+    call mem_cpy
+    add esp, 12                     ; clear argument in stack
+
+next_program_header:
+    add ebx, edx
+    loop each_program_header_loop
+
+    ret
+
+;-------------------------
+; memory copy(dstr, src, size)
+;   push size   : size of data
+;   push src    : address of source
+;   push dst    : address of destination
+;-------------------------
+mem_cpy:
+    ; backup
+    push ecx
+
+    ; copy by byte
+    mov edi, [esp + 8]
+    mov esi, [esp + 12]
+    mov ecx, [esp + 16]
+    cld         ; set increment for movsb
+    rep movsb
+
+    ; restore
+    pop ecx
+
+    ret
+
+;-------------------------
+; non-fix data location
+;-------------------------
+    msg_1       db "2 Loader"
+    msg_1_len   equ 8
+    msg_2       db "3 Protected"
+    msg_2_len   equ 11
+    msg_3       db "4 Paging"
+    msg_3_len   equ 8
+    msg_4       db "5 Kernel"
+    msg_4_len   equ 8
+    gdtr    dw GDT_LIMIT    ; [15:00] GDT limit 16 bits
+            dd gdt_base     ; [47:16] GDT base address 32 bits

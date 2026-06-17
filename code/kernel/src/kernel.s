@@ -114,6 +114,7 @@ global syscall_entry
 syscall_entry:
 ; backup registers
     ZERO                ; reserved for error code
+
     push ds
     push es
     push fs
@@ -123,7 +124,9 @@ syscall_entry:
     push edx            ; argument 3
     push ecx            ; argument 2
     push ebx            ; argument 1
+
     sti                         ; syscall MUST enbale interrupt
+
     call [syscall_func + eax * 4] ; call the external function
     add esp, 12         ; clear argument in stack
 
@@ -137,5 +140,4 @@ syscall_entry:
     pop es
     pop ds
     add esp, 4                  ; clear error code in stack
-
     iretd

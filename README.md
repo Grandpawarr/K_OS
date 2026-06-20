@@ -243,3 +243,6 @@ void test_all(void)
   - 8259A PIC implement + test
   - syscall (`int 0x80`) implement + test
   - syscall_usr (user-side wrapper) for test
+
+- cho06 scheduler
+  - system timer + test_timer

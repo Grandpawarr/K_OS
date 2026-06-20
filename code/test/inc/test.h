@@ -5,6 +5,8 @@
 #include "string.h"
 #include "stddef.h"
 #include "list.h"
+#include "interrupt.h"
+#include "timer.h"
 
 //=========================
 // test_print.c
@@ -39,6 +41,11 @@ void test_memory(bool test_free, bool test_list_flag);
 // test_interrupt.c
 //=========================
 void test_intr(void);
+
+//=========================
+// test_interrupt.c
+//=========================
+void test_timer(void);
 
 //=========================
 // test_all.c

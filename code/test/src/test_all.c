@@ -22,5 +22,8 @@ void test_all(void)
     // test_memory(1, 0);
 
     /* interrupt.h */
-    test_intr();
+    // test_intr();
+
+    /* timer.h */
+    test_timer();
 }

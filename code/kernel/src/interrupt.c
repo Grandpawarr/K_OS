@@ -10,7 +10,7 @@
 
 /** @def DEBUG
  *  @brief Enable (1) or disable (0) debug trace output. */
-#define DEBUG (1)
+#define DEBUG (0)
 
 /**
  * @def TRACE_STR(x)
@@ -203,10 +203,6 @@ static void idt_init(void)
     for (int idx = 0; idx <= IDT_VEC_MAX; idx++)
     {
         intr_name[idx] = "unkown";
-<<<<<<< HEAD
-        
-=======
->>>>>>> 49e345ab47829c6e8ef7c8664418dc1800eaa8a5
         intr_func[idx] = NULL;
         if (idx < intr_entry_size)
         {
@@ -305,11 +301,7 @@ static void pic_init(void)
     outb(PIC_S_DATA, 0x01); /* ICW4: 8086 mode, normal EOI */
 
     /* Mask all IRQ lines on both PICs until drivers unmask their own IRQ */
-<<<<<<< HEAD
-    outb(PIC_M_DATA, 0xFF); /* master IMR: mask IRQ0–IRQ7  */
-=======
     outb(PIC_M_DATA, 0xFE); /* master IMR: mask IRQ0–IRQ7  */
->>>>>>> 49e345ab47829c6e8ef7c8664418dc1800eaa8a5
     outb(PIC_S_DATA, 0xFF); /* slave  IMR: mask IRQ8–IRQ15 */
 }
 

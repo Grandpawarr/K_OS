@@ -96,6 +96,7 @@ test_objs += $(BUILD_DIR)/test_bitmap.o
 test_objs += $(BUILD_DIR)/test_list.o
 test_objs += $(BUILD_DIR)/test_memory.o
 test_objs += $(BUILD_DIR)/test_interrupt.o
+test_objs += $(BUILD_DIR)/test_timer.o
 
 $(BUILD_DIR)/test.o: $(test_objs)
 	$(LD) -m elf_i386 -r $^ -o $@
@@ -113,7 +114,7 @@ kernel_obj += $(BUILD_DIR)/memory.o
 kernel_obj += $(BUILD_DIR)/kernel.o
 kernel_obj += $(BUILD_DIR)/interrupt.o
 kernel_obj	+= $(BUILD_DIR)/syscall_sys.o
-kernel_obj	+= $(BUILD_DIR)/syscall_usr.o	# only for test
+kernel_obj	+= $(BUILD_DIR)/timer.o
 kernel_obj += $(lib_obj)
 
 #####################################

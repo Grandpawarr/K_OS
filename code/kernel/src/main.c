@@ -1,6 +1,8 @@
 #include "init.h"
 #include "print.h"
 #include "test.h"
+#include "thread.h"
+#include "sched.h"
 
 int main()
 {
@@ -9,8 +11,11 @@ int main()
 
     /* Test function */
     test_all();
-    
-    while (1)
-        ;
+
+    kthread_exit();
+
+    // while (1)
+    //     ;
+
     return 0;
 }

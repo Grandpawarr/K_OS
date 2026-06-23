@@ -246,3 +246,4 @@ void test_all(void)
 
 - cho06 scheduler
   - system timer + test_timer
+  - schedule + test_thread

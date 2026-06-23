@@ -7,6 +7,7 @@
 #include "list.h"
 #include "interrupt.h"
 #include "timer.h"
+#include "thread.h"
 
 //=========================
 // test_print.c
@@ -46,6 +47,11 @@ void test_intr(void);
 // test_interrupt.c
 //=========================
 void test_timer(void);
+
+//=========================
+// test_thread.c
+//=========================
+void test_thread(void);
 
 //=========================
 // test_all.c

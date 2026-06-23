@@ -3,9 +3,10 @@
         {
             "name": "K_OS",
             "includePath": [
-                "${workspaceFolder}/kernel/inc",
-                "${workspaceFolder}/lib/inc",
-                "${workspaceFolder}/usr/inc"
+                "${workspaceFolder}/code/kernel/inc",
+                "${workspaceFolder}/code/lib/inc",
+                "${workspaceFolder}/code/usr/inc",
+                "${workspaceFolder}/code/test/inc"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

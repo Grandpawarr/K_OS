@@ -301,7 +301,7 @@ static void pic_init(void)
     outb(PIC_S_DATA, 0x01); /* ICW4: 8086 mode, normal EOI */
 
     /* Mask all IRQ lines on both PICs until drivers unmask their own IRQ */
-    outb(PIC_M_DATA, 0xFE); /* master IMR: mask IRQ0–IRQ7  */
+    outb(PIC_M_DATA, 0xFE); /* master IMR: mask IRQ1–IRQ7  */
     outb(PIC_S_DATA, 0xFF); /* slave  IMR: mask IRQ8–IRQ15 */
 }
 

@@ -25,5 +25,8 @@ void test_all(void)
     // test_intr();
 
     /* timer.h */
-    test_timer();
+    // test_timer();
+
+    /* thread.h */
+    test_thread();
 }

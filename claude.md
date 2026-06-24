@@ -13,3 +13,24 @@
 - **kernel/src/switch.s**：補上組語版 `@file` 標頭與 `switch_to` 例程說明（含 4 次 push 後的堆疊偏移、esp 存入 PCB 首欄 kstack 的機制）。
 
 **驗證**：`make all` 編譯連結成功，無錯誤。
+
+## 2026-06-24：修正 test_thread.c 號誌死結
+- **test/src/test_thread.c**：`thread_aaa` 的 `sema_up`/`mutex_unlock` 原本在 `while(1)` 迴圈外（永遠執行不到），導致它 `sema_down` 後從不釋放號誌；A 在第二輪 `sema_down` 阻塞，B~F 也全部阻塞 → ready list 清空 → 退回 `g_idle_task`，畫面卡在 idle。已將釋放搬進迴圈內，與 B~F 一致。
+- 釐清：cursor 80 的 "idle" 是 `kthread_init()` 建立的核心 `g_idle_task`，與 test 內被註解的 `task_idle` 無關。
+
+## 2026-06-24：補上 lock.h / lock.c 註解
+- **kernel/inc/lock.h**：external function 一律在此補完整 Doxygen（spinlock/mutex/semaphore 三組 init/lock/unlock、`xchg`、三個 struct 與成員）。
+- **kernel/src/lock.c**：只補 `@file` 標頭、internal `lock_waiter` struct（說明 waiter 配在阻塞者自己堆疊上為何安全），以及 spin_lock 自旋重試、mutex/sema「掛 wait_list→放鎖→block→醒來重檢」迴圈的 inline 註解；不重複 .h 的函式說明。
+- **驗證**：`make all` 編譯連結成功。
+
+## 2026-06-24：補上 print / stdio 註解
+- **kernel/inc/print.h**：five external VGA 輸出函式補完整 Doxygen（put_char/put_str/put_int/set_cursor/cls_screen）。
+- **kernel/src/print.s**：補 `@file` 標頭，說明 video selector、CRTC cursor port、每格 2 bytes、80x25 捲動機制（既有逐行註解保留）。
+- **lib/inc/stdio.h**：external `vsprintf`/`sprintf`、`va_start/va_arg/va_end` 巨集、`va_list` typedef 補 Doxygen。
+- **lib/src/stdio.c**：補 `@file` 標頭與 internal static `itoa` 完整說明（遞迴先處理商數→數字自然順序、cursor 前進、不寫 NUL）；vsprintf/sprintf 說明留在 .h 不重複。
+- **驗證**：`make all` 編譯連結成功。
+
+## 2026-06-24：stdio.h 同步 vsprintf 修正
+- **lib/inc/stdio.h**：使用者已修好 stdio.c（補 `*out='\0'`、改回傳 `out - str`）。同步更新 `vsprintf`/`sprintf` 註解：說明會寫結尾 NUL、`@return` 改為「寫入字元數（不含 NUL）」。
+- print.h 上一輪已補註解，內容與 print.s 一致（put_char 捲動/BS/CR/LF、put_int 為十六進位去前導零等），本輪確認無需再改。
+- **驗證**：`make all` 編譯連結成功。

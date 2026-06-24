@@ -102,9 +102,9 @@ static void idle_thread(void *arg)
     while (1)
     {
 
-        set_cursor(80);
-        put_str("idle:0x");
-        put_int(count++);
+        // set_cursor(80);
+        // put_str("idle:0x");
+        // put_int(count++);
 
         kthread_block(TASK_BLOCKED);
         asm volatile("sti; hlt" : : : "memory");

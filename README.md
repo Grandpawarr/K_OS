@@ -247,3 +247,5 @@ void test_all(void)
 - cho06 scheduler
   - system timer + test_timer
   - schedule + test_thread
+  - lock + test_thread(add lock)
+  - printk + test_printk(待看完測試code)

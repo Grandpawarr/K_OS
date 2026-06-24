@@ -27,6 +27,10 @@ void test_all(void)
     /* timer.h */
     // test_timer();
 
-    /* thread.h */
-    test_thread();
+    /* thread.h and lock.h */
+    // test_thread();
+
+    /* printk.h and stdio.h */
+    test_printk();
+    // test_concurrency();
 }

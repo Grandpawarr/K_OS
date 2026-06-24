@@ -8,6 +8,9 @@
 #include "interrupt.h"
 #include "timer.h"
 #include "thread.h"
+#include "lock.h"
+#include "printk.h"
+#include "stdio.h"
 
 //=========================
 // test_print.c
@@ -52,6 +55,12 @@ void test_timer(void);
 // test_thread.c
 //=========================
 void test_thread(void);
+
+//=========================
+// test_printf.c
+//=========================
+void test_printk();
+void test_concurrency();
 
 //=========================
 // test_all.c

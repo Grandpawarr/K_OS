@@ -85,6 +85,7 @@ $(BUILD_DIR)/%.o: $(USR_SRC)/%.s
 #		Lib Object Files			#
 #####################################
 lib_obj		+= $(BUILD_DIR)/string.o 
+lib_obj		+= $(BUILD_DIR)/stdio.o 
 
 #####################################
 #		Test Object Files			#
@@ -98,6 +99,7 @@ test_objs += $(BUILD_DIR)/test_memory.o
 test_objs += $(BUILD_DIR)/test_interrupt.o
 test_objs += $(BUILD_DIR)/test_timer.o
 test_objs += $(BUILD_DIR)/test_thread.o
+test_objs += $(BUILD_DIR)/test_printk.o
 
 $(BUILD_DIR)/test.o: $(test_objs)
 	$(LD) -m elf_i386 -r $^ -o $@
@@ -119,6 +121,8 @@ kernel_obj	+= $(BUILD_DIR)/timer.o
 kernel_obj	+= $(BUILD_DIR)/thread.o
 kernel_obj	+= $(BUILD_DIR)/sched.o
 kernel_obj	+= $(BUILD_DIR)/switch.o
+kernel_obj	+= $(BUILD_DIR)/lock.o
+kernel_obj	+= $(BUILD_DIR)/printk.o
 kernel_obj += $(lib_obj)
 
 #####################################

@@ -1,5 +1,9 @@
 #include "test.h"
 
+struct mutex mlock;
+struct semaphore sema;
+#define LOCK_SEMA (1)
+
 void thread_aaa(void *arg)
 {
     uint32_t idx = 0;
@@ -7,11 +11,23 @@ void thread_aaa(void *arg)
     {
         msleep(1000);
 
+#if (LOCK_SEMA)
+        sema_down(&sema);
+#else
+        mutex_lock(&mlock);
+#endif
+
         set_cursor(160);
         put_str(arg);
         put_str(":0x");
         put_int(idx++);
         put_str(" ");
+
+#if (LOCK_SEMA)
+        sema_up(&sema);
+#else
+        mutex_unlock(&mlock);
+#endif
     }
 }
 
@@ -21,12 +37,21 @@ void thread_bbb(void *arg)
     while (1)
     {
         msleep(100);
-
+#if (LOCK_SEMA)
+        sema_down(&sema);
+#else
+        mutex_lock(&mlock);
+#endif
         set_cursor(240);
         put_str(arg);
         put_str(":0x");
         put_int(idx++);
         put_str(" ");
+#if (LOCK_SEMA)
+        sema_up(&sema);
+#else
+        mutex_unlock(&mlock);
+#endif
     }
 }
 
@@ -37,11 +62,22 @@ void thread_ccc(void *arg)
     {
         msleep(10);
 
+#if (LOCK_SEMA)
+        sema_down(&sema);
+#else
+        mutex_lock(&mlock);
+#endif
         set_cursor(320);
         put_str(arg);
         put_str(":0x");
         put_int(idx++);
         put_str(" ");
+
+#if (LOCK_SEMA)
+        sema_up(&sema);
+#else
+        mutex_unlock(&mlock);
+#endif
     }
 }
 
@@ -52,11 +88,23 @@ void thread_ddd(void *arg)
     {
         usleep(1000);
 
+#if (LOCK_SEMA)
+        sema_down(&sema);
+#else
+        mutex_lock(&mlock);
+#endif
+
         set_cursor(400);
         put_str(arg);
         put_str(":0x");
         put_int(idx++);
         put_str(" ");
+
+#if (LOCK_SEMA)
+        sema_up(&sema);
+#else
+        mutex_unlock(&mlock);
+#endif
     }
 }
 
@@ -67,11 +115,23 @@ void thread_eee(void *arg)
     {
         usleep(100);
 
+#if (LOCK_SEMA)
+        sema_down(&sema);
+#else
+        mutex_lock(&mlock);
+#endif
+
         set_cursor(480);
         put_str(arg);
         put_str(":0x");
         put_int(idx++);
         put_str(" ");
+
+#if (LOCK_SEMA)
+        sema_up(&sema);
+#else
+        mutex_unlock(&mlock);
+#endif
     }
 }
 
@@ -82,11 +142,22 @@ void thread_fff(void *arg)
     {
         usleep(10);
 
+#if (LOCK_SEMA)
+        sema_down(&sema);
+#else
+        mutex_lock(&mlock);
+#endif
         set_cursor(560);
         put_str(arg);
         put_str(":0x");
         put_int(idx++);
         put_str(" ");
+
+#if (LOCK_SEMA)
+        sema_up(&sema);
+#else
+        mutex_unlock(&mlock);
+#endif
     }
 }
 
@@ -113,11 +184,22 @@ void test_thread()
         kthread_create(thread_idle, "IDLE", "kthreadI");
 
     cls_screen();
+
+    /* init lock */
+
+#if (LOCK_SEMA)
+    put_str("test semaphore\n");
+    sema_init(&sema, 1);
+#else
+    put_str("test mutex\n");
+    mutex_init(&mlock);
+#endif
+
     kthread_run(taskA);
     kthread_run(taskB);
     kthread_run(taskC);
     kthread_run(taskD);
     kthread_run(taskE);
     kthread_run(taskF);
-    kthread_run(task_idle);
+    // kthread_run(task_idle);
 }

@@ -1,3 +1,14 @@
+;==============================================================================
+; @file print.s
+; @brief VGA text-mode console primitives (see print.h for the C interface).
+;
+; Routines write directly to the video memory addressed through the video GDT
+; selector and program the CRTC registers (ports 0x03d4/0x03d5) to move the
+; hardware cursor. Each cell is 2 bytes: ASCII char + attribute (0x07 = grey
+; on black). The screen is 80x25 = 2000 cells; put_char scrolls up one line
+; when output passes the bottom.
+;==============================================================================
+
 ;-------------------------
 ; Video GDT selector
 ;-------------------------

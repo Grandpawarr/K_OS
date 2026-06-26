@@ -4,10 +4,10 @@
 /**
  * @brief The memset() function fills the first n bytes of the memory area
  * pointed to by str with the constant byte ch
- * 
- * @param str 
- * @param ch 
- * @param n 
+ *
+ * @param str Pointer to the memory area to fill.
+ * @param ch  Byte value written to each location.
+ * @param n   Number of bytes to fill.
  */
 void memset(void* str, uint8_t ch, uint32_t n)
 {
@@ -21,10 +21,10 @@ void memset(void* str, uint8_t ch, uint32_t n)
 /**
  * @brief The memcpy() function copies n bytes
  * from memory area src to memory area dst.
- * 
- * @param dst 
- * @param src 
- * @param n 
+ *
+ * @param dst Destination buffer.
+ * @param src Source buffer.
+ * @param n   Number of bytes to copy.
  */
 void memcpy(void* dst, const void* src, uint32_t n)
 {
@@ -39,11 +39,11 @@ void memcpy(void* dst, const void* src, uint32_t n)
 /**
  * @brief The memcmp() function compares the first n bytes
  * of the memory areas s1 and s2
- * 
- * @param s1 
- * @param s2 
- * @param n 
- * @return int 
+ *
+ * @param s1 First memory area.
+ * @param s2 Second memory area.
+ * @param n  Number of bytes to compare.
+ * @return 0 if equal; 1 if s1 > s2; -1 if s1 < s2 at the first differing byte.
  */
 int memcmp(const void* s1, const void* s2, uint32_t n)
 {
@@ -59,15 +59,16 @@ int memcmp(const void* s1, const void* s2, uint32_t n)
         pS1++;
         pS2++;
     }
+    return 0;
 }
 
 /**
  * @brief The strcpy() function copies the string pointed to by src
  * to the buffer pointed to by dst.
- * 
- * @param dst 
- * @param src 
- * @return char* 
+ *
+ * @param dst Destination buffer, must be large enough to hold src.
+ * @param src Source string.
+ * @return Pointer to dst.
  */
 char* strcpy(char* dst, const char* src)
 {
@@ -79,9 +80,9 @@ char* strcpy(char* dst, const char* src)
 
 /**
  * @brief The strlen() function calculates the length of the string str.
- * 
- * @param str 
- * @return uint32_t 
+ *
+ * @param str String to measure.
+ * @return Number of bytes before the terminating NUL.
  */
 uint32_t strlen(const char* str)
 {
@@ -93,10 +94,10 @@ uint32_t strlen(const char* str)
 
 /**
  * @brief  The strcmp() function compares the two strings s1 and s2.
- * 
- * @param s1 
- * @param s2 
- * @return int8_t 
+ *
+ * @param s1 First string.
+ * @param s2 Second string.
+ * @return 0 if equal; 1 if s1 > s2; -1 if s1 < s2.
  */
 int8_t strcmp (const char* s1, const char* s2)
 {
@@ -110,12 +111,12 @@ int8_t strcmp (const char* s1, const char* s2)
 }
 
 /**
- * @brief The strchr() function returns a pointer to 
+ * @brief The strchr() function returns a pointer to
  * the first occurrence of the character ch in the string str.
- * 
- * @param str 
- * @param ch 
- * @return char* 
+ *
+ * @param str String to search.
+ * @param ch  Character to look for.
+ * @return Pointer to the first match, or NULL if not found.
  */
 char* strchr(const char* str, const uint8_t ch)
 {
@@ -133,10 +134,10 @@ char* strchr(const char* str, const uint8_t ch)
 /**
  * @brief The strrchr() function returns a pointer to
  * the last occurrence of the character ch in the string str.
- * 
- * @param str 
- * @param ch 
- * @return char* 
+ *
+ * @param str String to search.
+ * @param ch  Character to look for.
+ * @return Pointer to the last match, or NULL if not found.
  */
 char* strrchr(const char* str, const uint8_t ch)
 {
@@ -155,10 +156,10 @@ char* strrchr(const char* str, const uint8_t ch)
 /**
  * @brief The strcat() function appends the src string to the dst string.
  * overwriting the terminating null byte ('\0') at the end of dst.
- * 
- * @param dst 
- * @param src 
- * @return char* 
+ *
+ * @param dst Destination string, must be large enough for the result.
+ * @param src String to append.
+ * @return Pointer to dst.
  */
 char* strcat(char* dst, const char* src)
 {
@@ -172,10 +173,10 @@ char* strcat(char* dst, const char* src)
 /**
  * @brief The strchrs() function returns the count of
  * occurrence of the character ch in the string str.
- * 
- * @param str 
- * @param ch 
- * @return uint32_t 
+ *
+ * @param str String to scan.
+ * @param ch  Character to count.
+ * @return Number of occurrences of ch.
  */
 uint32_t strchrs(const char* str, uint8_t ch)
 {

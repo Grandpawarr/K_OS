@@ -34,3 +34,14 @@
 - **lib/inc/stdio.h**：使用者已修好 stdio.c（補 `*out='\0'`、改回傳 `out - str`）。同步更新 `vsprintf`/`sprintf` 註解：說明會寫結尾 NUL、`@return` 改為「寫入字元數（不含 NUL）」。
 - print.h 上一輪已補註解，內容與 print.s 一致（put_char 捲動/BS/CR/LF、put_int 為十六進位去前導零等），本輪確認無需再改。
 - **驗證**：`make all` 編譯連結成功。
+
+## 2026-06-27：新增 .clang-format
+- 根目錄新增 `.clang-format`：`BasedOnStyle: LLVM` + `ColumnLimit: 80` + `IndentWidth: 4`（對齊 `.vscode/settings.json` 的 `tabSize: 4`）。cpptools 存檔時會自動套用。
+
+## 2026-06-27：string Doxygen 註解
+- **lib/inc/string.h**：原本無註解，補上全部函式的 Doxygen（@brief/@param/@return）。
+- **lib/src/string.c**：原有 Doxygen 但 @param/@return 為空，全部填上說明。僅註解，無邏輯變更。
+- **lib/src/string.c**：修 `memcmp` bug — n 個 byte 全相等時原本未 return（UB），補上 `return 0;`。單獨編譯零警告通過。
+
+## 2026-06-27：printk.h Doxygen 註解
+- **kernel/inc/printk.h**：為 `printk` / `printk_init` 補上 Doxygen 註解（含 thread-safe、需先呼叫 init、1024-byte buffer 限制）。僅註解，無邏輯變更。

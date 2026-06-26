@@ -8,29 +8,27 @@
  */
 
 #include "thread.h"
-#include "print.h"
-#include "stddef.h"
-#include "memory.h"
-#include "string.h"
-#include "list.h"
 #include "interrupt.h"
+#include "list.h"
+#include "memory.h"
+#include "print.h"
 #include "sched.h"
+#include "stddef.h"
+#include "string.h"
 
 //=========================
 // debugging
 //=========================
 #define DEBUG (0)
-#define TRACE_STR(x)    \
-    do                  \
-    {                   \
-        if (DEBUG)      \
-            put_str(x); \
+#define TRACE_STR(x)                                                           \
+    do {                                                                       \
+        if (DEBUG)                                                             \
+            put_str(x);                                                        \
     } while (0)
-#define TRACE_INT(x)    \
-    do                  \
-    {                   \
-        if (DEBUG)      \
-            put_int(x); \
+#define TRACE_INT(x)                                                           \
+    do {                                                                       \
+        if (DEBUG)                                                             \
+            put_int(x);                                                        \
     } while (0)
 
 //=========================
@@ -55,8 +53,7 @@ struct task_struct *g_idle_task; /**< @copydoc g_idle_task */
  * @param fn     Thread payload function.
  * @param fn_arg Argument passed to @p fn.
  */
-static void kernel_thread(threadfn fn, void *fn_arg)
-{
+static void kernel_thread(threadfn fn, void *fn_arg) {
     TRACE_STR("kernel_thread intr status: ");
     TRACE_INT((int)intr_get_status());
     TRACE_STR("\n");
@@ -72,8 +69,7 @@ static void kernel_thread(threadfn fn, void *fn_arg)
  * so this synthesises a PCB for it from the live @c esp and enqueues it onto
  * the scheduler lists. Called once during @ref kthread_init.
  */
-static void main_thread_init(void)
-{
+static void main_thread_init(void) {
     uint32_t esp;
     asm("mov %%esp, %0" : "=g"(esp));
 
@@ -96,11 +92,9 @@ static void main_thread_init(void)
  *
  * @param arg Unused.
  */
-static void idle_thread(void *arg)
-{
+static void idle_thread(void *arg) {
     uint32_t count = 0;
-    while (1)
-    {
+    while (1) {
 
         // set_cursor(80);
         // put_str("idle:0x");
@@ -114,8 +108,7 @@ static void idle_thread(void *arg)
 //=========================
 // external functions
 //=========================
-struct task_struct *kthread_current(void)
-{
+struct task_struct *kthread_current(void) {
     uint32_t esp;
     asm("mov %%esp, %0" : "=g"(esp));
 
@@ -123,8 +116,7 @@ struct task_struct *kthread_current(void)
     return (struct task_struct *)(esp & 0xfffff000);
 }
 
-struct task_struct *kthread_create(threadfn fn, void *fn_arg, char *name)
-{
+struct task_struct *kthread_create(threadfn fn, void *fn_arg, char *name) {
     struct task_struct *task = page_malloc(PF_KERNEL, NULL, 1);
 
     TRACE_STR("task_struct: 0x");
@@ -151,8 +143,7 @@ struct task_struct *kthread_create(threadfn fn, void *fn_arg, char *name)
     return task;
 }
 
-void kthread_run(struct task_struct *task)
-{
+void kthread_run(struct task_struct *task) {
     /* Backup status of interrupt */
     bool intr_stat = intr_get_status();
     /* Disable interrupt */
@@ -168,8 +159,7 @@ void kthread_run(struct task_struct *task)
     intr_set_status(intr_stat);
 }
 
-void kthread_exit(void)
-{
+void kthread_exit(void) {
     /* Backup status of interrupt */
     bool intr_stat = intr_get_status();
 
@@ -184,8 +174,7 @@ void kthread_exit(void)
     list_remove(&task->task_all_tag);
 
     /* free page for PCB */
-    if (task != g_main_task)
-    {
+    if (task != g_main_task) {
         page_free(PF_KERNEL, task, 1);
     }
 
@@ -196,16 +185,14 @@ void kthread_exit(void)
     intr_set_status(intr_stat);
 }
 
-void kthread_block(enum task_status stat)
-{
+void kthread_block(enum task_status stat) {
     /* Backup status of interrupt */
     bool intr_stat = intr_get_status();
 
     /* Disable interrupt */
     intr_set_status(false);
 
-    if (TASK_BLOCKED == stat || TASK_WAITING == stat || TASK_HANGING == stat)
-    {
+    if (TASK_BLOCKED == stat || TASK_WAITING == stat || TASK_HANGING == stat) {
         // update the status
         struct task_struct *task = kthread_current();
         task->status = stat;
@@ -218,8 +205,7 @@ void kthread_block(enum task_status stat)
     intr_set_status(intr_stat);
 }
 
-void kthread_unblock(struct task_struct *task)
-{
+void kthread_unblock(struct task_struct *task) {
     /* Backup status of interrupt */
     bool intr_stat = intr_get_status();
 
@@ -228,8 +214,7 @@ void kthread_unblock(struct task_struct *task)
 
     int stat = task->status;
 
-    if (TASK_BLOCKED == stat || TASK_WAITING == stat || TASK_HANGING == stat)
-    {
+    if (TASK_BLOCKED == stat || TASK_WAITING == stat || TASK_HANGING == stat) {
         // ready to schedule
         task->status = TASK_READY;
         list_push(&task_ready_list, &task->task_tag);
@@ -239,8 +224,7 @@ void kthread_unblock(struct task_struct *task)
     intr_set_status(intr_stat);
 }
 
-void kthread_yield(void)
-{
+void kthread_yield(void) {
     /* Backup status of interrupt */
     bool intr_stat = intr_get_status();
 
@@ -258,8 +242,7 @@ void kthread_yield(void)
     intr_set_status(intr_stat);
 }
 
-void kthread_init(void)
-{
+void kthread_init(void) {
     list_init(&task_ready_list);
     list_init(&task_all_list);
 

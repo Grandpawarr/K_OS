@@ -1,7 +1,6 @@
 #include "test.h"
 
-void test_all(void)
-{
+void test_all(void) {
     /* print.h */
     // test_put_char();
     // test_put_str();
@@ -31,6 +30,9 @@ void test_all(void)
     // test_thread();
 
     /* printk.h and stdio.h */
-    test_printk();
-    // test_concurrency();
+    // test_printk();
+    test_concurrency();
+
+    /* assert.h */
+    // assert(1 == 2);
 }

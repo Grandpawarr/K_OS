@@ -1,8 +1,8 @@
 #ifndef _KERNEL_INC_INTERRUPT_H
 #define _KERNEL_INC_INTERRUPT_H
-#include "stdint.h"
 #include "print.h"
 #include "stdbool.h"
+#include "stdint.h"
 
 //=========================
 // define

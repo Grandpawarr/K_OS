@@ -249,3 +249,5 @@ void test_all(void)
   - schedule + test_thread
   - lock + test_thread(add lock)
   - printk + test_printk(待看完測試code)
+  - assert + test_assert
+  - memory add lock + test_printk(在 thread 裡面跑 page and sys malloc)

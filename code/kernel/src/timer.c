@@ -4,6 +4,7 @@
  */
 
 #include "timer.h"
+#include "assert.h"
 #include "interrupt.h"
 #include "io.h"
 #include "print.h"
@@ -74,6 +75,11 @@ static void timer_handler(void) {
     // TRACE_STR("\n");
 
     struct task_struct *cur_task = kthread_current();
+
+    /* Stack overflow detection */
+    assert(0x19880802 == cur_task->stack_magic);
+
+    /* Scheduler */
     if (0 == cur_task->time_slice) {
         schedule();
     } else {

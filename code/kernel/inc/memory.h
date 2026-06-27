@@ -1,8 +1,9 @@
 #ifndef __KERNEL_INC_MEMORY_H
 #define __KERNEL_INC_MEMORY_H
-#include "stdint.h"
 #include "bitmap.h"
 #include "list.h"
+#include "lock.h"
+#include "stdint.h"
 
 //=========================
 // define
@@ -19,10 +20,10 @@
 /**
  * @brief Selects which memory pool an allocation or release operates on.
  */
-enum pool_flags
-{
+enum pool_flags {
     PF_KERNEL = 1, /**< Kernel physical + virtual pool. */
-    PF_USER = 2    /**< User-process physical + virtual pool (not yet implemented). */
+    PF_USER =
+        2 /**< User-process physical + virtual pool (not yet implemented). */
 };
 
 /**
@@ -82,37 +83,42 @@ enum pool_flags
  *
  * The system contains only one single physical pool.
  */
-struct p_pool
-{
+struct p_pool {
     uint32_t paddr_start;
     uint32_t size;
-    struct bitmap paddr_bitmap; // Bitmap tracking page usage(0 = free, 1 = used).
+    struct bitmap
+        paddr_bitmap; // Bitmap tracking page usage(0 = free, 1 = used).
+    struct mutex mlock;
 };
 
 /**
- * @brief Virtual address pool, one per process/kernel for managing virtual address space.
+ * @brief Virtual address pool, one per process/kernel for managing virtual
+ * address space.
  *
  * @note No size field is needed because the managed range is implicitly encoded
  *       in the bitmap itself: bitmap.bits * 4KB = total managed virtual range.
  */
-struct v_pool
-{
+struct v_pool {
     uint32_t vaddr_start;
     struct bitmap vaddr_bitmap;
+    struct mutex mlock;
 };
 
 /**
- * @brief Descriptor for one fixed-size block class used by the slab-style allocator.
+ * @brief Descriptor for one fixed-size block class used by the slab-style
+ * allocator.
  *
- * Each descriptor represents one block size (16, 32, 64, 128, 256, 512, or 1024 bytes).
- * Arenas are carved into @p blocks_per_arena blocks of @p block_size bytes;
- * free blocks are linked through @p free_list.
+ * Each descriptor represents one block size (16, 32, 64, 128, 256, 512, or 1024
+ * bytes). Arenas are carved into @p blocks_per_arena blocks of @p block_size
+ * bytes; free blocks are linked through @p free_list.
  */
-struct mem_block_desc
-{
-    uint32_t block_size;       /**< Size in bytes of each block managed by this descriptor. */
-    uint32_t blocks_per_arena; /**< Number of blocks that fit in one arena page. */
-    struct list free_list;     /**< Intrusive list of currently free blocks. */
+struct mem_block_desc {
+    uint32_t block_size; /**< Size in bytes of each block managed by this
+                            descriptor. */
+    uint32_t
+        blocks_per_arena;  /**< Number of blocks that fit in one arena page. */
+    struct list free_list; /**< Intrusive list of currently free blocks. */
+    struct mutex mlock;
 };
 
 //=========================
@@ -125,7 +131,8 @@ struct mem_block_desc
  * Acquires virtual addresses from the corresponding virtual pool and
  * physical frames from the corresponding physical pool, then wires them
  * together in the page table.
- * - If @p vaddr is NULL the allocator picks a free virtual address automatically.
+ * - If @p vaddr is NULL the allocator picks a free virtual address
+ * automatically.
  * - If @p vaddr is non-NULL the allocation starts at that exact address;
  *   fails if any page in the range is already in use.
  *
@@ -140,7 +147,8 @@ struct mem_block_desc
 void *page_malloc(enum pool_flags pf, void *vaddr, int pg_cnt);
 
 /**
- * @brief Release @p pg_cnt pages starting at @p vaddr back to the pool selected by @p pf.
+ * @brief Release @p pg_cnt pages starting at @p vaddr back to the pool selected
+ * by @p pf.
  *
  * @details
  * For each page in [@p vaddr, @p vaddr + @p pg_cnt * PG_SIZE):

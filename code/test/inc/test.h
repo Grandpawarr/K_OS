@@ -1,16 +1,18 @@
 #ifndef __TEST_INC_TEST_H
 #define __TEST_INC_TEST_H
 
-#include "print.h"
-#include "string.h"
-#include "stddef.h"
-#include "list.h"
+#include "assert.h"
 #include "interrupt.h"
-#include "timer.h"
-#include "thread.h"
+#include "list.h"
 #include "lock.h"
+#include "memory.h"
+#include "print.h"
 #include "printk.h"
+#include "stddef.h"
 #include "stdio.h"
+#include "string.h"
+#include "thread.h"
+#include "timer.h"
 
 //=========================
 // test_print.c

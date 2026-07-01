@@ -31,8 +31,11 @@ void test_all(void) {
 
     /* printk.h and stdio.h */
     // test_printk();
-    test_concurrency();
+    // test_concurrency();
 
     /* assert.h */
     // assert(1 == 2);
+
+    /* ide.h */
+    test_ide();
 }

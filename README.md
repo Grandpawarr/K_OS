@@ -251,3 +251,7 @@ void test_all(void)
   - printk + test_printk(待看完測試code)
   - assert + test_assert
   - memory add lock + test_printk(在 thread 裡面跑 page and sys malloc)
+
+- cho07 File system
+  - add 80mb.ing + ./bochsrc setting
+  - ide + test_ide

@@ -1,3 +1,8 @@
 BasedOnStyle: LLVM
 ColumnLimit: 80
 IndentWidth: 4
+IndentPPDirectives: BeforeHash
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false

@@ -1,8 +1,8 @@
 #include "interrupt.h"
-#include "kernel.h"
-#include "stddef.h"
-#include "print.h"
 #include "io.h"
+#include "kernel.h"
+#include "print.h"
+#include "stddef.h"
 
 //=========================
 // debugging
@@ -17,11 +17,10 @@
  * @brief Print a string literal when #DEBUG is non-zero.
  * @param x Null-terminated string to print.
  */
-#define TRACE_STR(x)    \
-    do                  \
-    {                   \
-        if (DEBUG)      \
-            put_str(x); \
+#define TRACE_STR(x)                                                           \
+    do {                                                                       \
+        if (DEBUG)                                                             \
+            put_str(x);                                                        \
     } while (0)
 
 /**
@@ -29,11 +28,10 @@
  * @brief Print an integer value when #DEBUG is non-zero.
  * @param x Integer value to print.
  */
-#define TRACE_INT(x)    \
-    do                  \
-    {                   \
-        if (DEBUG)      \
-            put_int(x); \
+#define TRACE_INT(x)                                                           \
+    do {                                                                       \
+        if (DEBUG)                                                             \
+            put_int(x);                                                        \
     } while (0)
 
 //=========================
@@ -52,8 +50,7 @@
  *  └─────────────┴──────────┴────────┴────────────┴────────────┘
  * @endcode
  */
-struct idt_desc
-{
+struct idt_desc {
     uint16_t offset_1; /**< Handler address bits [15:0]. */
     uint16_t selector; /**< Segment selector for the handler's code segment. */
     uint8_t zero;      /**< Reserved; must be 0 per x86 specification. */
@@ -94,11 +91,9 @@ char *intr_name[IDT_VEC_MAX + 1];
  *
  * @param vec  Interrupt vector number delivered by the CPU.
  */
-static void intr_general_handler(uint8_t vec)
-{
+static void intr_general_handler(uint8_t vec) {
     /* Spurious interrupt from master (0x27) or slave (0x2F) PIC — ignore */
-    if (vec == 0x27 || vec == 0x2F)
-    {
+    if (vec == 0x27 || vec == 0x2F) {
         return;
     }
 
@@ -112,8 +107,7 @@ static void intr_general_handler(uint8_t vec)
     put_str("\n");
 
     /* For page fault (vector 0x0E), read the faulting address from CR2 */
-    if (0xE == vec)
-    {
+    if (0xE == vec) {
         int page_fault_vaddr = 0;
         asm("movl %%cr2, %0" : "=r"(page_fault_vaddr));
         put_str("    page fault addr is ");
@@ -155,8 +149,7 @@ static void intr_general_handler(uint8_t vec)
  *                @c GDT_P_1|GDT_DPL_3); only bits [15:13] (P and DPL) are used.
  * @param func    Address of the interrupt handler routine.
  */
-static void make_idt_table(struct idt_desc *p_dest, uint32_t attr, void *func)
-{
+static void make_idt_table(struct idt_desc *p_dest, uint32_t attr, void *func) {
     /* Lower 16 bits of the handler address */
     p_dest->offset_1 = (uint32_t)func & 0x000FFFF;
 
@@ -175,7 +168,8 @@ static void make_idt_table(struct idt_desc *p_dest, uint32_t attr, void *func)
 }
 
 /**
- * @brief Initialize the Interrupt Descriptor Table (IDT) and load it into the CPU.
+ * @brief Initialize the Interrupt Descriptor Table (IDT) and load it into the
+ * CPU.
  *
  * Steps performed:
  *  1. For every vector in [0, IDT_VEC_MAX], set @ref intr_name to "unknown"
@@ -183,16 +177,17 @@ static void make_idt_table(struct idt_desc *p_dest, uint32_t attr, void *func)
  *  2. For each vector that has an assembly entry stub in @c intr_entry[], call
  *     make_idt_table() with DPL=0 and install intr_general_handler() as the
  *     default C-level handler.  DPL=0 prevents user-space code from triggering
- *     hardware-interrupt or exception vectors via a software @c int instruction.
+ *     hardware-interrupt or exception vectors via a software @c int
+ * instruction.
  *  3. Install @c syscall_entry at vector 0x80 with DPL=3 so that user-space
  *     programs (CPL=3) may invoke kernel services via @c int @c 0x80 without
  *     triggering a #GP fault.  The CPU still switches to ring 0 on entry
  *     because the IDT selector always points to @ref SELECTOR_K_CODE.
  *  4. Assign human-readable names to the standard x86 exception vectors.
- *  5. Pack the IDT base address and limit into the IDTR format and execute @c lidt.
+ *  5. Pack the IDT base address and limit into the IDTR format and execute @c
+ * lidt.
  */
-static void idt_init(void)
-{
+static void idt_init(void) {
     uint32_t attr;
     int intr_entry_size = sizeof(intr_entry) / 4;
     TRACE_STR("intr_enrty_size: ");
@@ -200,12 +195,10 @@ static void idt_init(void)
     TRACE_STR("\n");
 
     /* Step 1 & 2: fill descriptors and set default handler */
-    for (int idx = 0; idx <= IDT_VEC_MAX; idx++)
-    {
+    for (int idx = 0; idx <= IDT_VEC_MAX; idx++) {
         intr_name[idx] = "unkown";
         intr_func[idx] = NULL;
-        if (idx < intr_entry_size)
-        {
+        if (idx < intr_entry_size) {
             attr = GDT_P_1 + GDT_DPL_0;
             make_idt_table(&idt_table[idx], attr, intr_entry[idx]);
             intr_func[idx] = intr_general_handler;
@@ -246,35 +239,39 @@ static void idt_init(void)
     // intr_name[0x1F] reserved
 
     /* Step 4: pack IDTR operand (base-16 | limit-16) and load into CPU */
-    uint64_t idt_operand = ((sizeof(idt_table) - 1) | ((uint64_t)(uint32_t)idt_table << 16));
+    uint64_t idt_operand =
+        ((sizeof(idt_table) - 1) | ((uint64_t)(uint32_t)idt_table << 16));
     asm volatile("lidt %0" : : "m"(idt_operand));
 }
 
 /**
- * @brief Initialize and mask the dual 8259A Programmable Interrupt Controllers (PICs).
+ * @brief Initialize and mask the dual 8259A Programmable Interrupt Controllers
+ * (PICs).
  *
  * This function programs both the master and slave 8259A PICs in cascade mode
  * using the standard four Initialization Command Words (ICW1–ICW4), then masks
- * all IRQ lines on both controllers so that no hardware interrupt reaches the CPU
- * until individual drivers explicitly unmask their IRQ.
+ * all IRQ lines on both controllers so that no hardware interrupt reaches the
+ * CPU until individual drivers explicitly unmask their IRQ.
  *
  * @par Master PIC (base I/O: PIC_M_CTRL / PIC_M_DATA)
- * | Command Word | Port         | Value | Meaning                                      |
+ * | Command Word | Port         | Value | Meaning |
  * |:------------:|:------------:|:-----:|:---------------------------------------------|
- * | ICW1         | PIC_M_CTRL   | 0x11  | Start init sequence; edge-triggered; ICW4 required |
- * | ICW2         | PIC_M_DATA   | 0x20  | Remap IRQ0–IRQ7 to interrupt vectors 0x20–0x27     |
- * | ICW3         | PIC_M_DATA   | 0x04  | Slave PIC is connected to master IRQ2 (bit mask)   |
- * | ICW4         | PIC_M_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
- * | IMR          | PIC_M_DATA   | 0xFF  | Mask all eight master IRQ lines                    |
+ * | ICW1         | PIC_M_CTRL   | 0x11  | Start init sequence; edge-triggered;
+ * ICW4 required | | ICW2         | PIC_M_DATA   | 0x20  | Remap IRQ0–IRQ7 to
+ * interrupt vectors 0x20–0x27     | | ICW3         | PIC_M_DATA   | 0x04  |
+ * Slave PIC is connected to master IRQ2 (bit mask)   | | ICW4         |
+ * PIC_M_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
+ * | IMR          | PIC_M_DATA   | 0xFF  | Mask all eight master IRQ lines |
  *
  * @par Slave PIC (base I/O: PIC_S_CTRL / PIC_S_DATA)
- * | Command Word | Port         | Value | Meaning                                      |
+ * | Command Word | Port         | Value | Meaning |
  * |:------------:|:------------:|:-----:|:---------------------------------------------|
- * | ICW1         | PIC_S_CTRL   | 0x11  | Start init sequence; edge-triggered; ICW4 required |
- * | ICW2         | PIC_S_DATA   | 0x28  | Remap IRQ8–IRQ15 to interrupt vectors 0x28–0x2F    |
- * | ICW3         | PIC_S_DATA   | 0x02  | Slave identity: connected to master via IRQ2        |
- * | ICW4         | PIC_S_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
- * | IMR          | PIC_S_DATA   | 0xFF  | Mask all eight slave IRQ lines                     |
+ * | ICW1         | PIC_S_CTRL   | 0x11  | Start init sequence; edge-triggered;
+ * ICW4 required | | ICW2         | PIC_S_DATA   | 0x28  | Remap IRQ8–IRQ15 to
+ * interrupt vectors 0x28–0x2F    | | ICW3         | PIC_S_DATA   | 0x02  |
+ * Slave identity: connected to master via IRQ2        | | ICW4         |
+ * PIC_S_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
+ * | IMR          | PIC_S_DATA   | 0xFF  | Mask all eight slave IRQ lines |
  *
  * @note After this call all hardware interrupts are suppressed.
  *       To enable a specific IRQ, clear the corresponding bit in the
@@ -286,8 +283,7 @@ static void idt_init(void)
  * @see outb()
  * @see PIC_M_CTRL, PIC_M_DATA, PIC_S_CTRL, PIC_S_DATA
  */
-static void pic_init(void)
-{
+static void pic_init(void) {
     /* Master PIC */
     outb(PIC_M_CTRL, 0x11); /* ICW1: edge trigger mode, ICW4 needed */
     outb(PIC_M_DATA, 0x20); /* ICW2: vector address start from 0x20 */
@@ -301,40 +297,31 @@ static void pic_init(void)
     outb(PIC_S_DATA, 0x01); /* ICW4: 8086 mode, normal EOI */
 
     /* Mask all IRQ lines on both PICs until drivers unmask their own IRQ */
-    outb(PIC_M_DATA, 0xFE); /* master IMR: mask IRQ1–IRQ7  */
-    outb(PIC_S_DATA, 0xFF); /* slave  IMR: mask IRQ8–IRQ15 */
+    outb(PIC_M_DATA, 0xFA); /* master IMR: mask IRQ1–IRQ7  */
+    outb(PIC_S_DATA, 0x33); /* slave  IMR: mask IRQ8–IRQ15 */
 }
 
 //=========================
 // external functions
 //=========================
 
-bool intr_get_status(void)
-{
+bool intr_get_status(void) {
     uint32_t eflags = 0;
     asm volatile("pushfl; popl %0" : "=g"(eflags));
     return (eflags & 0x200) ? true : false;
 }
 
-void intr_set_status(bool intr_status)
-{
-    if (true == intr_status)
-    {
+void intr_set_status(bool intr_status) {
+    if (true == intr_status) {
         asm volatile("sti");
-    }
-    else
-    {
+    } else {
         asm volatile("cli");
     }
 }
 
-void register_handler(uint8_t vec, void *func)
-{
-    intr_func[vec] = func;
-}
+void register_handler(uint8_t vec, void *func) { intr_func[vec] = func; }
 
-void intr_init()
-{
+void intr_init() {
     TRACE_STR("intr_init()\n");
     idt_init();
     pic_init();

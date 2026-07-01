@@ -45,3 +45,17 @@
 
 ## 2026-06-27：printk.h Doxygen 註解
 - **kernel/inc/printk.h**：為 `printk` / `printk_init` 補上 Doxygen 註解（含 thread-safe、需先呼叫 init、1024-byte buffer 限制）。僅註解，無邏輯變更。
+
+## 2026-06-29：io.h 註解修正（outb→outw）
+- **kernel/inc/io.h**：`outw` 註解原本還寫 `outb`／`AL`／8-bit byte，改為 `outw`／`AX`／16-bit word。
+- `outsw`／`insw` 的 bytes 全部改為 words（字串傳輸計數單位是 word）；並修 `insw` 註解內的 `insb` 筆誤為 `insw`。僅註解。
+
+## 2026-06-29：ide.c Doxygen 註解
+- **kernel/src/ide.c**：為 `@file`、`ptn_table`／`boot_sector` struct、`g_ide_ch`／`ptn_list` 全域、及全部 internal 函式補上 Doxygen 註解（風格對齊 io.h）。
+- 順手修兩處編譯阻斷筆誤：`ide_set_drive` 內 `| z DRIVE_LBA` 的多餘 `z`；`static void_set_lba(...)` 改為 `static void ide_set_lba(...)`。
+- 未處理（超出本次範圍，待確認）：程式用 `inw`／`inb` 讀 port，但 io.h 目前只定義 `inb`，`inw` 尚未宣告。
+
+## 2026-06-30：ide.c / ide.h 補完 Doxygen
+- **kernel/inc/ide.h**：為 `ide_ptn`／`ide_hd`／`ide_ch` struct 及成員補 Doxygen（含 `irq` 存的是 remap 後的 IDT vector 0x20+IRQ line 而非原始 IRQ 線號的提醒）、`ptn_list` 全域、`ide_read`／`ide_write`／`ide_init` 宣告補 @brief/@param。
+- **kernel/src/ide.c**：為先前無註解的 `ide_get_partition`／`ide_ch_init`／`ide_read`／`ide_write`／`ide_init` 補 Doxygen（風格對齊既有 io.h／ide.c 註解）。`ide_set_drive` 既有 brief 已正確（select/set active drive），維持不變。
+- 僅註解，無邏輯變更。

@@ -1,13 +1,13 @@
 #include "init.h"
-#include "memory.h"
+#include "ide.h"
 #include "interrupt.h"
-#include "syscall_sys.h"
-#include "timer.h"
-#include "thread.h"
+#include "memory.h"
 #include "printk.h"
+#include "syscall_sys.h"
+#include "thread.h"
+#include "timer.h"
 
-void kernel_init()
-{
+void kernel_init() {
     mem_init();
     intr_init();
     syscall_init();
@@ -17,4 +17,6 @@ void kernel_init()
 
     // enable interrupt
     intr_set_status(true);
+
+    ide_init();
 }

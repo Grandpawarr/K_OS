@@ -2,6 +2,7 @@
 #define __TEST_INC_TEST_H
 
 #include "assert.h"
+#include "ide.h"
 #include "interrupt.h"
 #include "list.h"
 #include "lock.h"
@@ -63,6 +64,11 @@ void test_thread(void);
 //=========================
 void test_printk();
 void test_concurrency();
+
+//=========================
+// test_ide.c
+//=========================
+void test_ide();
 
 //=========================
 // test_all.c

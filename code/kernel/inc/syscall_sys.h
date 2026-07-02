@@ -1,17 +1,30 @@
 #ifndef __KERNEL_INC_SYSCALL_SYS_H
 #define __KERNEL_INC_SYSCALL_SYS_H
 
+/**
+ * @file syscall_sys.h
+ * @brief Kernel side of the system-call interface (int 0x80).
+ *
+ * The user-side wrappers that issue @c int @c 0x80 live in
+ * usr/inc/syscall_usr.h; this header covers the kernel dispatch table setup.
+ */
+
 //=========================
 // define
 //=========================
+/** @brief Capacity of the dispatch table @c syscall_func[] (max syscalls). */
 #define SYSCALL_MAX (32)
 
+/**
+ * @brief System-call numbers: the index the caller loads into EAX before
+ *        @c int @c 0x80, and the slot used in @c syscall_func[].
+ */
 enum SyscallNR
 {
-    SYS_TEST0,
-    SYS_TEST1,
-    SYS_TEST2,
-    SYS_TEST3
+    SYS_TEST0, /**< Test syscall, no arguments. */
+    SYS_TEST1, /**< Test syscall, 1 argument (EBX). */
+    SYS_TEST2, /**< Test syscall, 2 arguments (EBX, ECX). */
+    SYS_TEST3  /**< Test syscall, 3 arguments (EBX, ECX, EDX). */
 };
 
 //=========================

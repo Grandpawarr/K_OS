@@ -1,3 +1,16 @@
+/**
+ * @file memory.c
+ * @brief Kernel memory management implementation.
+ *
+ * Layering (top to bottom):
+ *   sys_malloc / sys_free      — byte-granularity heap (arena + block)
+ *   page_malloc / page_free    — page-granularity API (pool selection)
+ *   page_acquire / page_release— wire virtual pages to physical frames
+ *   vaddr_* / palloc / pfree   — bitmap allocation in each pool
+ *   pde_ptr / pte_ptr          — page-table access via recursive mapping
+ *
+ * External function contracts are documented in memory.h.
+ */
 #include "memory.h"
 #include "list.h"
 #include "math.h"
@@ -37,24 +50,30 @@ struct arena {
                          (blocks). */
 };
 
-/* For each meory block in arena */
+/**
+ * @brief View of one free block inside an arena.
+ *
+ * Only meaningful while the block is free: the list node lives in the
+ * block's own storage and is overwritten by user data once allocated.
+ */
 struct mem_block {
-    struct list_elem free_elem;
+    struct list_elem free_elem; /**< Node linked into the descriptor's
+                                   free_list. */
 };
 
 //=========================
 // global variable
 //=========================
-// for physical memory management
+/** @brief Physical frame pools: kernel / user halves of available RAM. */
 struct p_pool k_p_pool, u_p_pool;
 
-// for kernel virtual address
+/** @brief Kernel virtual address pool (heap starts at K_HEAP_START). */
 struct v_pool k_v_pool;
 
-// for memory block management
+/** @brief The seven kernel block descriptors (16 B ... 1024 B). */
 struct mem_block_desc k_mem_block[MEM_BLOCK_CNT];
 
-// lock for page tabel
+/** @brief Serialises page-table writes in page_table_add(). */
 static struct mutex mlock_pgtable;
 
 //=========================
@@ -186,6 +205,12 @@ static void vaddr_release(struct v_pool *vp, void *vaddr, int pg_cnt) {
     bitmap_release(&vp->vaddr_bitmap, btmp_idx, pg_cnt);
 }
 
+/**
+ * @brief Allocate one physical frame from pool @p pp.
+ *
+ * @param pp  Physical pool to allocate from.
+ * @return    Physical address of the frame, or NULL if the pool is full.
+ */
 static void *palloc(struct p_pool *pp) {
     void *paddr;
     int btmp_idx = -1;
@@ -199,6 +224,12 @@ static void *palloc(struct p_pool *pp) {
     return paddr;
 }
 
+/**
+ * @brief Return one physical frame to pool @p pp.
+ *
+ * @param pp     Physical pool the frame was allocated from.
+ * @param paddr  Physical address of the frame to free.
+ */
 static void pfree(struct p_pool *pp, void *paddr) {
     uint32_t paddr_val = (uint32_t)paddr;
     int bitmap_indx = 0;
@@ -245,7 +276,7 @@ static void page_table_add(void *vaddr, void *paddr) {
  */
 static void page_table_remove(void *vaddr) {
     uint32_t *pte = pte_ptr(vaddr);
-    *pte &= !PG_P_1;
+    *pte &= ~PG_P_1;
 
     /* Update TLB */
     asm volatile("invlpg %0" ::"m"(vaddr) : "memory");
@@ -316,14 +347,14 @@ static void page_release(struct v_pool *vp, struct p_pool *pp, void *vaddr,
     for (int i = 0; i < pg_cnt; vaddr_idx += PG_SIZE, i++) {
         /* free physical memory */
         paddr = (void *)addr_v2p(vaddr_idx);
-        mutex_lock(&vp->mlock);
+        mutex_lock(&pp->mlock);
         pfree(pp, paddr);
-        mutex_unlock(&vp->mlock);
+        mutex_unlock(&pp->mlock);
 
         /* remove page table */
-        mutex_lock(&vp->mlock);
+        mutex_lock(&mlock_pgtable);
         page_table_remove(vaddr_idx);
-        mutex_unlock(&vp->mlock);
+        mutex_unlock(&mlock_pgtable);
     }
 
     /* Release virtuall memory */
@@ -431,11 +462,20 @@ static void pool_init(uint32_t mem_total_size) {
     mutex_init(&k_v_pool.mlock);
 }
 
+/**
+ * @brief Return the address of the @p idx-th block inside arena @p a
+ *        (blocks start right after the arena header).
+ */
 static struct mem_block *arena2block(struct arena *a, uint32_t idx) {
     return (struct mem_block *)((uint32_t)a + sizeof(struct arena) +
                                 idx * a->p_mem_block->block_size);
 }
 
+/**
+ * @brief Return the arena a block belongs to. Works because an arena is
+ *        page-aligned and one page large, so masking off the low 12 bits
+ *        of any block address yields its arena header.
+ */
 static struct arena *block2arena(struct mem_block *b) {
     return (struct arena *)((uint32_t)b & 0xfffff000);
 }
@@ -491,6 +531,15 @@ static void *mem_acquire(struct v_pool *vp, struct p_pool *pp,
     return (void *)b;
 }
 
+/**
+ * @brief Return one block to its arena's free list; when every block in
+ *        the arena is free again, unlink them all and release the whole
+ *        arena page back to the pools.
+ *
+ * @param vp     Virtual pool the arena page came from.
+ * @param pp     Physical pool the arena page came from.
+ * @param vaddr  Block previously returned by mem_acquire().
+ */
 static void mem_release(struct v_pool *vp, struct p_pool *pp, void *vaddr) {
     struct mem_block *b = vaddr;
     struct arena *a = block2arena(b);
@@ -516,6 +565,7 @@ static void mem_release(struct v_pool *vp, struct p_pool *pp, void *vaddr) {
 // external functions
 //=========================
 
+/** @brief Allocate whole pages from the selected pool. @see memory.h */
 void *page_malloc(enum pool_flags pf, void *vaddr, int pg_cnt) {
     void *vaddr_start = NULL;
 
@@ -531,6 +581,7 @@ void *page_malloc(enum pool_flags pf, void *vaddr, int pg_cnt) {
     return vaddr_start;
 }
 
+/** @brief Release whole pages back to the selected pool. @see memory.h */
 void page_free(enum pool_flags pf, void *vaddr, int pg_cnt) {
 
     if (PF_KERNEL == pf) {
@@ -545,6 +596,7 @@ void page_free(enum pool_flags pf, void *vaddr, int pg_cnt) {
     return;
 }
 
+/** @brief Kernel heap allocation (block or whole pages). @see memory.h */
 void *sys_malloc(uint32_t size) {
     struct mem_block_desc *mblock = NULL;
     struct v_pool *vp;
@@ -586,6 +638,7 @@ void *sys_malloc(uint32_t size) {
     return vaddr;
 }
 
+/** @brief Free memory returned by sys_malloc(). @see memory.h */
 void sys_free(void *vaddr) {
     struct v_pool *vp;
     struct p_pool *pp;
@@ -605,6 +658,7 @@ void sys_free(void *vaddr) {
     }
 }
 
+/** @brief Initialize the seven block-size descriptors. @see memory.h */
 void mem_block_init(struct mem_block_desc *p_mem_block) {
     uint32_t block_size = 16;
     for (int idx = 0; idx < MEM_BLOCK_CNT; idx++, block_size *= 2) {
@@ -618,6 +672,7 @@ void mem_block_init(struct mem_block_desc *p_mem_block) {
     }
 }
 
+/** @brief Initialize the whole memory subsystem. @see memory.h */
 void mem_init() {
     TRACE_STR("mem_init()\n");
     uint32_t mem_total_size = (*(uint32_t *)MEM_SIZE_ADDR);

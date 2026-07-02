@@ -1,3 +1,9 @@
+/**
+ * @file interrupt.c
+ * @brief IDT setup, 8259A PIC initialization and interrupt status control.
+ *
+ * External function contracts are documented in interrupt.h.
+ */
 #include "interrupt.h"
 #include "io.h"
 #include "kernel.h"
@@ -196,7 +202,7 @@ static void idt_init(void) {
 
     /* Step 1 & 2: fill descriptors and set default handler */
     for (int idx = 0; idx <= IDT_VEC_MAX; idx++) {
-        intr_name[idx] = "unkown";
+        intr_name[idx] = "unknown";
         intr_func[idx] = NULL;
         if (idx < intr_entry_size) {
             attr = GDT_P_1 + GDT_DPL_0;
@@ -245,37 +251,28 @@ static void idt_init(void) {
 }
 
 /**
- * @brief Initialize and mask the dual 8259A Programmable Interrupt Controllers
- * (PICs).
+ * @brief Initialize the dual 8259A Programmable Interrupt Controllers (PICs).
  *
- * This function programs both the master and slave 8259A PICs in cascade mode
- * using the standard four Initialization Command Words (ICW1–ICW4), then masks
- * all IRQ lines on both controllers so that no hardware interrupt reaches the
- * CPU until individual drivers explicitly unmask their IRQ.
+ * Programs both the master and slave 8259A in cascade mode using the standard
+ * four Initialization Command Words (ICW1-ICW4), then sets the Interrupt Mask
+ * Registers so that only the IRQ lines K_OS actually services are unmasked:
  *
- * @par Master PIC (base I/O: PIC_M_CTRL / PIC_M_DATA)
- * | Command Word | Port         | Value | Meaning |
- * |:------------:|:------------:|:-----:|:---------------------------------------------|
- * | ICW1         | PIC_M_CTRL   | 0x11  | Start init sequence; edge-triggered;
- * ICW4 required | | ICW2         | PIC_M_DATA   | 0x20  | Remap IRQ0–IRQ7 to
- * interrupt vectors 0x20–0x27     | | ICW3         | PIC_M_DATA   | 0x04  |
- * Slave PIC is connected to master IRQ2 (bit mask)   | | ICW4         |
- * PIC_M_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
- * | IMR          | PIC_M_DATA   | 0xFF  | Mask all eight master IRQ lines |
+ * - Master IMR = 0xFA (1111_1010b): unmask IRQ0 (PIT timer) and IRQ2
+ *   (cascade to slave); all other master lines masked.
+ * - Slave  IMR = 0x33 (0011_0011b): unmask IRQ10 / IRQ11 / IRQ14 / IRQ15
+ *   (the four IDE channels); IRQ8 / 9 / 12 / 13 masked.
  *
- * @par Slave PIC (base I/O: PIC_S_CTRL / PIC_S_DATA)
- * | Command Word | Port         | Value | Meaning |
- * |:------------:|:------------:|:-----:|:---------------------------------------------|
- * | ICW1         | PIC_S_CTRL   | 0x11  | Start init sequence; edge-triggered;
- * ICW4 required | | ICW2         | PIC_S_DATA   | 0x28  | Remap IRQ8–IRQ15 to
- * interrupt vectors 0x28–0x2F    | | ICW3         | PIC_S_DATA   | 0x02  |
- * Slave identity: connected to master via IRQ2        | | ICW4         |
- * PIC_S_DATA   | 0x01  | 8086/88 mode; manual (normal) EOI                  |
- * | IMR          | PIC_S_DATA   | 0xFF  | Mask all eight slave IRQ lines |
+ * @par Initialization sequence (per PIC)
+ * | Command Word | Value (M / S) | Meaning |
+ * |:------------:|:-------------:|:-----------------------------------------------|
+ * | ICW1         | 0x11 / 0x11   | Start init; edge-triggered; ICW4 required |
+ * | ICW2         | 0x20 / 0x28   | Remap IRQ0-7 → vec 0x20-0x27, IRQ8-15 →
+ * 0x28-0x2F | | ICW3         | 0x04 / 0x02   | Slave wired to master IRQ2 /
+ * slave identity = 2 | | ICW4         | 0x01 / 0x01   | 8086/88 mode; manual
+ * (normal) EOI               | | IMR          | 0xFA / 0x33   | See unmask
+ * summary above                        |
  *
- * @note After this call all hardware interrupts are suppressed.
- *       To enable a specific IRQ, clear the corresponding bit in the
- *       master or slave Interrupt Mask Register (IMR).
+ * @note To enable another IRQ later, clear its bit in the master or slave IMR.
  *
  * @note The legacy 8259A conflicts with APIC on SMP systems.
  *       This implementation targets single-processor (UP) x86 machines only.
@@ -296,9 +293,9 @@ static void pic_init(void) {
     outb(PIC_S_DATA, 0x02); /* ICW3: IRQ2 for slave */
     outb(PIC_S_DATA, 0x01); /* ICW4: 8086 mode, normal EOI */
 
-    /* Mask all IRQ lines on both PICs until drivers unmask their own IRQ */
-    outb(PIC_M_DATA, 0xFA); /* master IMR: mask IRQ1–IRQ7  */
-    outb(PIC_S_DATA, 0x33); /* slave  IMR: mask IRQ8–IRQ15 */
+    /* IMR: unmask only the IRQs K_OS services (0 = enabled, 1 = masked) */
+    outb(PIC_M_DATA, 0xFA); /* master: IRQ0 timer + IRQ2 cascade enabled */
+    outb(PIC_S_DATA, 0x33); /* slave : IRQ10/11/14/15 (IDE channels) enabled */
 }
 
 //=========================

@@ -1,3 +1,9 @@
+/**
+ * @file syscall_sys.c
+ * @brief Kernel system-call dispatch table and built-in test handlers.
+ *
+ * External function contracts are documented in syscall_sys.h.
+ */
 #include "syscall_sys.h"
 #include "print.h"
 
@@ -144,6 +150,7 @@ uint32_t sys_test_syscall3(uint32_t arg1, uint32_t arg2, uint32_t arg3)
     return 0x9529;
 }
 
+/** @brief Register built-in handlers into syscall_func[]. @see syscall_sys.h */
 void syscall_init(void)
 {
     TRACE_STR("syscall_init()\n");

@@ -5,6 +5,13 @@
 #include "lock.h"
 #include "stdint.h"
 
+/**
+ * @file memory.h
+ * @brief Kernel memory management: bitmap-backed physical / virtual page
+ *        pools, page-granularity allocation (page_malloc / page_free) and a
+ *        slab-style small-block heap (sys_malloc / sys_free).
+ */
+
 //=========================
 // define
 // *pte = paddr | PG_US_U | PG_RW_W | PG_P_1
@@ -84,11 +91,11 @@ enum pool_flags {
  * The system contains only one single physical pool.
  */
 struct p_pool {
-    uint32_t paddr_start;
-    uint32_t size;
+    uint32_t paddr_start; /**< Physical address of the first managed frame. */
+    uint32_t size;        /**< Pool size in bytes. */
     struct bitmap
-        paddr_bitmap; // Bitmap tracking page usage(0 = free, 1 = used).
-    struct mutex mlock;
+        paddr_bitmap; /**< Bitmap tracking frame usage (0 = free, 1 = used). */
+    struct mutex mlock; /**< Serialises bitmap access between threads. */
 };
 
 /**
@@ -99,9 +106,10 @@ struct p_pool {
  *       in the bitmap itself: bitmap.bits * 4KB = total managed virtual range.
  */
 struct v_pool {
-    uint32_t vaddr_start;
-    struct bitmap vaddr_bitmap;
-    struct mutex mlock;
+    uint32_t vaddr_start; /**< First managed virtual address (K_HEAP_START
+                             for the kernel pool). */
+    struct bitmap vaddr_bitmap; /**< Bitmap tracking virtual page usage. */
+    struct mutex mlock; /**< Serialises bitmap access between threads. */
 };
 
 /**
@@ -118,7 +126,7 @@ struct mem_block_desc {
     uint32_t
         blocks_per_arena;  /**< Number of blocks that fit in one arena page. */
     struct list free_list; /**< Intrusive list of currently free blocks. */
-    struct mutex mlock;
+    struct mutex mlock;    /**< Serialises free-list access between threads. */
 };
 
 //=========================

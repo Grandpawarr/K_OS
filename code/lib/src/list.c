@@ -1,3 +1,10 @@
+/**
+ * @file list.c
+ * @brief Intrusive doubly linked list implementation.
+ *
+ * Function contracts are documented in list.h; only implementation
+ * notes are kept here.
+ */
 #include "list.h"
 #include "stddef.h"
 
@@ -72,7 +79,7 @@ bool list_find(struct list *plist, struct list_elem *elem)
     {
         if (cur_elem == elem)
         {
-            return false;
+            return true;
         }
         cur_elem = cur_elem->next;
     }

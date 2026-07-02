@@ -1,6 +1,6 @@
 # K_OS
 
-K_OS 是一個從零開始打造的 x86（IA-32）32-bit 教學用作業系統，從 MBR、Bootloader、保護模式、分頁機制一路實作到核心的記憶體管理、中斷子系統與系統呼叫（`int 0x80`）。開發與測試環境使用 [Bochs 2.8](https://bochs.sourceforge.io/) x86 模擬器。
+K_OS 是一個從零開始打造的 x86（IA-32）32-bit 教學用作業系統，從 MBR、Bootloader、保護模式、分頁機制，一路實作到核心的記憶體管理、中斷與系統呼叫（`int 0x80`）、執行緒排程（RR）、同步原語（spinlock / mutex / semaphore）、`printk` 與 IDE 硬碟驅動，目前正在實作檔案系統。開發與測試環境使用 [Bochs 2.8](https://bochs.sourceforge.io/) x86 模擬器。
 
 ```
 BIOS → MBR (0x7C00) → Loader (0x0A00) → Protected Mode → Paging → Kernel (0xC0001000)
@@ -14,14 +14,16 @@ BIOS → MBR (0x7C00) → Loader (0x0A00) → Protected Mode → Paging → Kern
 
 ```
 K_OS/
-├── readme.md          ← 本文件（安裝、架設、使用）
+├── README.md          ← 本文件（安裝、架設、使用）
 ├── bochs-2.8/         ← Bochs 2.8 原始碼（已編譯），含模擬器設定檔與磁碟映像
 │   ├── .bochsrc       ← Bochs 設定檔（CPU / 記憶體 / 硬碟 / 開機方式）
-│   └── 60mb.img       ← 60 MB 硬碟映像（K_OS 的開機磁碟）
+│   ├── 60mb.img       ← 開機碟（ata0-master，MBR + Loader + Kernel）
+│   └── 80mb.img       ← 資料碟（ata0-slave，IDE / 檔案系統測試用）
 └── code/              ← K_OS 原始碼
+    ├── ARCHITECTURE.md ← 架構文件（開機流程、記憶體配置、核心子系統）
     ├── boot/          ← MBR 與 Loader（NASM 組語）
-    ├── kernel/        ← 核心（中斷、記憶體管理、系統呼叫、VGA 輸出）
-    ├── lib/           ← 通用函式庫（string、list）
+    ├── kernel/        ← 核心（中斷、記憶體、執行緒排程、鎖、printk、IDE）
+    ├── lib/           ← 通用函式庫（string、list、stdio）
     ├── usr/           ← User 端程式碼（syscall wrapper）
     ├── test/          ← 各子系統測試
     ├── makefile
@@ -69,17 +71,21 @@ sudo make install        # 安裝至 /usr/local/bin/bochs、/usr/local/bin/bxima
 
 ### 2. 建立硬碟映像（已存在可略過）
 
+需要兩顆映像：`60mb.img` 開機碟、`80mb.img` 資料碟（IDE / 檔案系統測試用）：
+
 ```bash
 cd bochs-2.8
 bximage
 # 選擇 1 (Create new floppy or hard disk image)
 # hd → flat → 容量 60M → 檔名 60mb.img
+# 再執行一次：hd → flat → 容量 80M → 檔名 80mb.img
 ```
 
 `.bochsrc` 中對應的設定為：
 
 ```
 ata0-master: type=disk, mode=flat, path="60mb.img"
+ata0-slave:  type=disk, mode=flat, path="80mb.img"
 boot: disk
 ```
 
@@ -156,24 +162,15 @@ bochs -q -f .bochsrc
 ### 預期畫面
 
 開機過程依序印出 `1 MBR` → `2 Loader` → `3 Protected` → `4 Paging` → `5 Kernel`，
-進入核心後執行 `test/` 內的測試（預設為中斷與系統呼叫測試）：
+進入核心後執行 `test_all()` 中啟用的測試（預設為 IDE 讀寫測試）：
 
 ```
 Kernel main()
 ...
-syscall_init()
-intr_get_status: 1
-test syscall0()
-sys_test_syscall0() called
-test_syscall1()
-sys_test_syscall1()
-argument 1: 0x111
-ret= 0x9527
-...
-ret= 0x9529
+Test ide
+before write:0x0, 0x0
+after write:0x95, 0x27
 ```
-
-之後畫面出現 `vector number: 0x20` 訊息屬正常現象：開啟中斷後 timer（IRQ0）觸發，目前尚未註冊 timer handler，因此進入預設 handler。
 
 ---
 
@@ -194,13 +191,18 @@ bochs -q -f .bochsrc
 要執行哪些子系統測試由 `code/test/src/test_all.c` 控制，取消註解即可啟用：
 
 ```c
-void test_all(void)
-{
-    // test_string();
-    // test_bitmap();
-    // test_list();
-    // test_memory(1, 0);
-    test_intr();        /* 中斷 + 系統呼叫測試 */
+void test_all(void) {
+    // test_string();      /* string.h */
+    // test_bitmap();      /* bitmap.h */
+    // test_list();        /* list.h */
+    // test_memory(1, 0);  /* memory.h */
+    // test_intr();        /* 中斷 + 系統呼叫 */
+    // test_timer();       /* timer.h */
+    // test_thread();      /* thread.h + lock.h */
+    // test_printk();      /* printk.h + stdio.h */
+    // test_concurrency();
+    // assert(1 == 2);     /* assert.h */
+    test_ide();            /* ide.h（讀寫 ata0-slave） */
 }
 ```
 
@@ -244,14 +246,14 @@ void test_all(void)
   - syscall (`int 0x80`) implement + test
   - syscall_usr (user-side wrapper) for test
 
-- cho06 scheduler
+- ch06 scheduler
   - system timer + test_timer
   - schedule + test_thread
   - lock + test_thread(add lock)
   - printk + test_printk(待看完測試code)
   - assert + test_assert
   - memory add lock + test_printk(在 thread 裡面跑 page and sys malloc)
-
-- cho07 File system
-  - add 80mb.ing + ./bochsrc setting
+- ch07 file system
+  - add 80mb.img + .bochsrc setting
   - ide + test_ide
+  - fs.h 資料結構定義（superblock / inode / dirent，實作進行中）

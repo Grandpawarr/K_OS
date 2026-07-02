@@ -15,11 +15,15 @@ BIOS → MBR (0x7C00) → Loader (0x0A00) → Protected Mode → Paging → Kern
 
 ## 磁碟佈局
 
+開機碟 `60mb.img`（ata0-master）：
+
 | 磁區 (LBA) | 內容 | 大小 |
 |---|---|---|
 | 0 | MBR | 1 sector / 512 B |
 | 1 ~ 4 | Loader | 4 sectors / 2 KB |
 | 5 ~ 204 | Kernel ELF | 200 sectors / 100 KB |
+
+另掛一顆資料碟 `80mb.img`（ata0-slave），供 IDE 驅動與檔案系統測試使用，不參與開機。
 
 ---
 
@@ -267,6 +271,38 @@ Page Directory（PD）位於 `0x0010_0000`：
 
 ---
 
+## 核心子系統
+
+核心進入點 `main()`（`kernel/src/main.c`）呼叫 `kernel_init()` 依序初始化各子系統，再執行 `test_all()` 中啟用的測試：
+
+```
+mem_init() → intr_init() → syscall_init() → timer_init()
+→ kthread_init() → printk_init() → 開中斷 → ide_init()
+```
+
+| 子系統 | 檔案 | 說明 |
+|---|---|---|
+| 中斷 | `interrupt.c` | IDT（0x30 個例外/IRQ 項目 + 0x80 syscall）、8259A PIC remap 至 0x20、`register_handler()` 註冊 C handler |
+| 系統呼叫 | `syscall_sys.c` / `usr/syscall_usr.c` | `int 0x80` 進核心；user 端 wrapper 於 `usr/` |
+| 記憶體管理 | `memory.c` / `bitmap.c` | bitmap 管理實體/虛擬頁池；`page_malloc` 整頁配置、`sys_malloc` 小塊配置（7 級 block 大小），已加鎖支援多執行緒 |
+| 系統時鐘 | `timer.c` | PIT 8253 counter 0，每 tick 10 µs（`SYS_TICK_US`）累加 `jiffies`；提供 `msleep` / `usleep` |
+| 執行緒 / 排程 | `thread.c` / `sched.c` / `switch.s` | `task_struct` PCB（`kstack` 必為首欄、`stack_magic` 為末欄防溢位）；RR 排程，時間片 100 ms；`switch_to` 組語切換；內建 idle thread |
+| 同步原語 | `lock.c` | `xchg` 自旋鎖；mutex / semaphore 以 wait_list + block/unblock 實作 |
+| 核心輸出 | `printk.c` / `print.s` / `stdio.c` | `printk`：thread-safe 格式化輸出（1024-byte buffer）；底層為 VGA 文字模式組語例程 |
+| 斷言 | `assert.c` | `assert()` 失敗時 `kernel_panic` 印出檔名/行號/函式並停機 |
+| IDE 驅動 | `ide.c` | ATA PIO 讀寫；每 channel 一把 mutex 序列化存取、semaphore 等待磁碟 IRQ；開機掃描 MBR 分割表建立 `ptn_list` |
+| 檔案系統 | `fs.h`（進行中） | 已定義 superblock（magic `0x19890604`）、inode（13 個 block 指標）、dirent、4 KB block；實作尚未開始 |
+
+### 記憶體管理位址配置
+
+| 位址 | 內容 |
+|---|---|
+| `0xC0076000` | 實體頁 bitmap（`PADDR_BITMAP_BASE`） |
+| `0xC0096000` | 核心虛擬位址 bitmap（`K_VADDR_BITMAP_BASE`） |
+| `0xC0100000` | 核心堆積起點（`K_HEAP_START`） |
+
+---
+
 ## 實作流程指引
 
 ### 1. MBR 實作要點
@@ -308,4 +344,4 @@ Page Directory（PD）位於 `0x0010_0000`：
 
 ## 建置與執行
 
-建置指令、磁碟映像寫入與 bochs 啟動流程，統一見根目錄 [README](../README.md) 的「日常開發循環」章節。
+建置指令、磁碟映像寫入與 bochs 啟動流程，統一見根目錄 [README](../README.md) 的「開發流程」章節。

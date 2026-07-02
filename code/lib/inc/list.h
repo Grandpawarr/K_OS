@@ -3,32 +3,53 @@
 #include "stdint.h"
 #include "stdbool.h"
 
+/**
+ * @file list.h
+ * @brief Intrusive doubly linked list with head/tail sentinels.
+ *
+ * The list does not own its nodes: a struct that wants to live on a list
+ * embeds a @ref list_elem member, and elem2entry() converts the embedded
+ * member pointer back to the enclosing struct (same idea as Linux
+ * list_head / container_of).
+ *
+ * @note No internal locking — callers must serialize access themselves
+ *       (e.g. thread ready list is protected by disabling interrupts).
+ */
+
 /***********
  * Define
  ***********/
+/** @brief Byte offset of @p member inside @p struct_type (like offsetof). */
 #define offset(struct_type, member) \
     (int)(&((struct_type *)0)->member)
+/** @brief Convert a pointer to an embedded list_elem member back to a pointer
+ *         to its enclosing @p struct_type (like container_of). */
 #define elem2entry(struct_type, struct_member_name, elem_ptr) \
     (struct_type *)((int)elem_ptr - offset(struct_type, struct_member_name))
 
 /***********
  * Struct
  ***********/
+/** @brief List node embedded inside the user's struct; carries no data. */
 struct list_elem
 {
-    struct list_elem *prev;
-    struct list_elem *next;
+    struct list_elem *prev; /**< Previous node (head sentinel: NULL). */
+    struct list_elem *next; /**< Next node (tail sentinel: NULL). */
 };
 
+/** @brief List handle. @p head / @p tail are sentinel nodes, not elements:
+ *         real elements live strictly between them. */
 struct list
 {
-    struct list_elem head;
-    struct list_elem tail;
+    struct list_elem head; /**< Sentinel before the first element. */
+    struct list_elem tail; /**< Sentinel after the last element. */
 };
 
 /***********
  * Function
  ***********/
+/** @brief Predicate callback for list_traversal(); return true to stop at the
+ *         current element. @p arg is caller-supplied context. */
 typedef bool(function)(struct list_elem *, int arg);
 
 /**

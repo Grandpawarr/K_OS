@@ -1,3 +1,10 @@
+/**
+ * @file bitmap.c
+ * @brief Bit-array allocator implementation.
+ *
+ * Function contracts are documented in bitmap.h; only implementation
+ * notes are kept here.
+ */
 #include "bitmap.h"
 #include "assert.h"
 #include "string.h"
@@ -29,7 +36,8 @@ bool bitmap_check(struct bitmap *btmp, uint32_t btmp_idx) {
 int bitmap_acquire(struct bitmap *btmp, uint32_t cnt) {
     uint32_t byte_idx = 0;
 
-    /* 1. Search by byte */
+    /* 1. Search by byte: skip fully-used (0xff) bytes to find the first
+     *    byte containing at least one free bit. */
     while ((0xff == btmp->bits[byte_idx]) & (byte_idx < btmp->len)) {
         byte_idx++;
     }

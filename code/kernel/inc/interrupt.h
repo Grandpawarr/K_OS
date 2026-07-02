@@ -4,6 +4,12 @@
 #include "stdbool.h"
 #include "stdint.h"
 
+/**
+ * @file interrupt.h
+ * @brief Interrupt subsystem: IDT (exceptions + IRQs + int 0x80 syscall gate),
+ *        8259A PIC setup, handler registration and IF-flag control.
+ */
+
 //=========================
 // define
 //=========================

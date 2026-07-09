@@ -1,4 +1,5 @@
 #include "init.h"
+#include "fs.h"
 #include "ide.h"
 #include "interrupt.h"
 #include "memory.h"
@@ -19,4 +20,5 @@ void kernel_init() {
     intr_set_status(true);
 
     ide_init();
+    fs_init();
 }

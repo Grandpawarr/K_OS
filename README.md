@@ -253,7 +253,8 @@ void test_all(void) {
   - printk + test_printk(待看完測試code)
   - assert + test_assert
   - memory add lock + test_printk(在 thread 裡面跑 page and sys malloc)
+
 - ch07 file system
   - add 80mb.img + .bochsrc setting
   - ide + test_ide
-  - fs.h 資料結構定義（superblock / inode / dirent，實作進行中）
+  - fs + test_fs

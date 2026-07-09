@@ -2,6 +2,7 @@
 #define __TEST_INC_TEST_H
 
 #include "assert.h"
+#include "fs.h"
 #include "ide.h"
 #include "interrupt.h"
 #include "list.h"
@@ -70,6 +71,10 @@ void test_concurrency();
 //=========================
 void test_ide();
 
+//=========================
+// test_fs.c
+//=========================
+void test_fs();
 //=========================
 // test_all.c
 //=========================

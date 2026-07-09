@@ -1,5 +1,6 @@
 #ifndef __KERNEL_INC_IDE_H
 #define __KERNEL_INC_IDE_H
+#include "bitmap.h"
 #include "list.h"
 #include "lock.h"
 #include "stdbool.h"
@@ -50,11 +51,23 @@
  * Filled in during init and linked into the global @ref ptn_list.
  */
 struct ide_ptn {
-    char name[8];             /**< Partition name, e.g. "sda_1".          */
+    char name[8];             /**< Partition name, e.g. "sda_1".           */
     uint32_t start_lba;       /**< Absolute starting LBA on the disk.      */
     uint32_t sec_cnt;         /**< Partition length in sectors.            */
     struct ide_hd *hd;        /**< Disk this partition lives on.           */
     struct list_elem ptn_tag; /**< Link node for @ref ptn_list.            */
+
+    /* For file system */
+    uint32_t inode_base;       /**< First global inode number for this ptn. */
+    uint32_t inode_cnt;        /**< Total inodes on the partition.          */
+    uint32_t inode_btmp_lba;   /**< LBA of the inode bitmap.                */
+    struct bitmap inode_btmp;  /**< In-memory copy of the inode bitmap.     */
+    uint32_t inode_table_lba;  /**< LBA of the inode table.                 */
+    uint32_t blk_btmp_lba;     /**< LBA of the block bitmap.                */
+    struct bitmap blk_btmp;    /**< In-memory copy of the block bitmap.     */
+    uint32_t blk_lba;          /**< LBA of the first data block.            */
+    struct list open_inodes;   /**< Currently-open inodes on this ptn.      */
+    struct mutex mlock;        /**< Serialises file-system access.          */
 };
 
 /**

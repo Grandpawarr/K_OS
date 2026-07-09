@@ -101,6 +101,7 @@ test_objs += $(BUILD_DIR)/test_timer.o
 test_objs += $(BUILD_DIR)/test_thread.o
 test_objs += $(BUILD_DIR)/test_printk.o
 test_objs += $(BUILD_DIR)/test_ide.o
+test_objs += $(BUILD_DIR)/test_fs.o
 
 $(BUILD_DIR)/test.o: $(test_objs)
 	$(LD) -m elf_i386 -r $^ -o $@
@@ -126,6 +127,7 @@ kernel_obj	+= $(BUILD_DIR)/lock.o
 kernel_obj	+= $(BUILD_DIR)/printk.o
 kernel_obj	+= $(BUILD_DIR)/assert.o
 kernel_obj	+= $(BUILD_DIR)/ide.o
+kernel_obj	+= $(BUILD_DIR)/fs.o
 kernel_obj += $(lib_obj)
 
 #####################################

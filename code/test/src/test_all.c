@@ -37,5 +37,8 @@ void test_all(void) {
     // assert(1 == 2);
 
     /* ide.h */
-    test_ide();
+    // test_ide();
+
+    /* fs.h */
+    test_fs();
 }
